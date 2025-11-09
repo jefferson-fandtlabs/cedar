@@ -1,1 +1,2 @@
 cost_calculation	Composite cost calculation with edge properties for CEA decision trees
+health_outcome_calculation	Composite health outcome calculation (QALYs, life years) for CEA decision trees
