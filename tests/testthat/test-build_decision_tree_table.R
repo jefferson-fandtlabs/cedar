@@ -554,3 +554,141 @@ test_that("build_decision_tree_table detects missing column names", {
     "probability_associations is missing required columns: to_node"
   )
 })
+
+test_that("build_decision_tree_table validates probabilities sum to 1.0 for each parent node", {
+  tree <- list(
+    "1" = c(2, 3),
+    "2" = c(4, 5, 6)
+  )
+
+  costs <- list()
+  # Probabilities for node 2 don't sum to 1.0 (0.7 + 0.1 + 0.1 = 0.9)
+  probs <- list("p1" = 0.7, "p2" = 0.1, "p3" = 0.1)
+  outcomes <- list()
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2", "p3"),
+    from_node = c(2, 2, 2),
+    to_node = c(4, 5, 6)
+  )
+
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  # Should catch that node 2's probabilities don't sum to 1.0
+  expect_error(
+    build_decision_tree_table(tree, costs, probs, outcomes, cost_assoc, prob_assoc, outcome_assoc),
+    "Probabilities for child nodes must sum to 1\\.0"
+  )
+
+  # Error should mention parent node 2
+  expect_error(
+    build_decision_tree_table(tree, costs, probs, outcomes, cost_assoc, prob_assoc, outcome_assoc),
+    "Parent Node 2"
+  )
+
+  # Error should show the actual sum
+  expect_error(
+    build_decision_tree_table(tree, costs, probs, outcomes, cost_assoc, prob_assoc, outcome_assoc),
+    "sum = 0\\.9000"
+  )
+
+  # Error should list child nodes and their probabilities
+  expect_error(
+    build_decision_tree_table(tree, costs, probs, outcomes, cost_assoc, prob_assoc, outcome_assoc),
+    "Node 4: 0\\.7000"
+  )
+})
+
+test_that("build_decision_tree_table validates multiple parent nodes with invalid probability sums", {
+  tree <- list(
+    "1" = c(2, 3),
+    "2" = c(4, 5),
+    "3" = c(6, 7)
+  )
+
+  costs <- list()
+  # Node 2: 0.7 + 0.2 = 0.9 (invalid)
+  # Node 3: 0.6 + 0.5 = 1.1 (invalid)
+  probs <- list(
+    "p1" = 0.7, "p2" = 0.2,
+    "p3" = 0.6, "p4" = 0.5
+  )
+  outcomes <- list()
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2", "p3", "p4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  # Should catch both invalid parent nodes
+  expect_error(
+    build_decision_tree_table(tree, costs, probs, outcomes, cost_assoc, prob_assoc, outcome_assoc),
+    "Parent Node 2.*sum = 0\\.9000"
+  )
+
+  expect_error(
+    build_decision_tree_table(tree, costs, probs, outcomes, cost_assoc, prob_assoc, outcome_assoc),
+    "Parent Node 3.*sum = 1\\.1000"
+  )
+})
+
+test_that("build_decision_tree_table does not validate probability sum for node 1", {
+  # Node 1 probabilities can be anything (decision node)
+  tree <- list(
+    "1" = c(2, 3, 4)
+  )
+
+  costs <- list()
+  probs <- list()
+  outcomes <- list()
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  prob_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  # Should not error even though node 1 has no probabilities
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  expect_equal(nrow(result), 3)
+  expect_true(all(is.na(result$probability)))
+})
+
+test_that("build_decision_tree_table accepts probabilities within floating point tolerance", {
+  tree <- list(
+    "1" = c(2, 3),
+    "2" = c(4, 5, 6)
+  )
+
+  costs <- list()
+  # Probabilities that sum to ~1.0 due to floating point (within tolerance)
+  probs <- list("p1" = 0.333333, "p2" = 0.333333, "p3" = 0.333334)
+  outcomes <- list()
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2", "p3"),
+    from_node = c(2, 2, 2),
+    to_node = c(4, 5, 6)
+  )
+
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  # Should not error because sum is within tolerance (1.000001)
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  expect_equal(nrow(result), 5)
+})

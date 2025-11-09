@@ -238,6 +238,58 @@ build_decision_tree_table <- function(tree_structure,
       by = c("from_node", "to_node"),
       all.x = TRUE
     )
+
+    # Validate that probabilities sum to 1.0 for each parent node (except node 1)
+    non_node1_with_probs <- tree_df[tree_df$from_node != 1 & !is.na(tree_df$probability), ]
+
+    if (nrow(non_node1_with_probs) > 0) {
+      # Calculate sum of probabilities for each parent node
+      prob_sums <- aggregate(
+        probability ~ from_node,
+        data = non_node1_with_probs,
+        FUN = sum
+      )
+
+      # Check for parent nodes where probabilities don't sum to 1.0
+      # Use tolerance of 0.0001 for floating point comparison
+      tolerance <- 0.0001
+      invalid_sums <- prob_sums[abs(prob_sums$probability - 1.0) > tolerance, ]
+
+      if (nrow(invalid_sums) > 0) {
+        # Build detailed error message for each invalid parent node
+        error_details <- lapply(invalid_sums$from_node, function(parent) {
+          # Get all child nodes and their probabilities for this parent
+          children <- non_node1_with_probs[non_node1_with_probs$from_node == parent, ]
+          children <- children[order(children$to_node), ]
+
+          # Format child node details
+          child_details <- paste(
+            sprintf("    Node %d: %.4f", children$to_node, children$probability),
+            collapse = "\n"
+          )
+
+          # Calculate actual sum
+          actual_sum <- sum(children$probability)
+
+          # Build message for this parent node
+          sprintf(
+            "  Parent Node %d (sum = %.4f):\n%s",
+            parent,
+            actual_sum,
+            child_details
+          )
+        })
+
+        error_msg <- paste0(
+          "Probabilities for child nodes must sum to 1.0 for each parent node.\n",
+          "The following parent nodes have invalid probability sums:\n\n",
+          paste(error_details, collapse = "\n\n"),
+          "\n\nNote: Probabilities for branches from node 1 (decision node) are not required to sum to 1.0"
+        )
+
+        stop(error_msg)
+      }
+    }
   } else {
     tree_df$probability <- NA_real_
   }
