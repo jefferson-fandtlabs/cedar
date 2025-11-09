@@ -11,7 +11,8 @@ build_decision_tree_table(
   health_outcomes,
   cost_associations,
   probability_associations,
-  health_outcome_associations
+  health_outcome_associations,
+  edge_properties = NULL
 )
 }
 \arguments{
@@ -39,10 +40,16 @@ connections except those originating from node 1 (decision node).}
 \item{health_outcome_associations}{A data frame or tibble with columns: name,
 from_node, to_node. Associates health outcome labels to node connections. Only
 terminal nodes should have health outcome associations.}
+
+\item{edge_properties}{Optional data frame or tibble with edge properties. Must
+include columns: from_node, to_node, plus any edge-specific properties (e.g.,
+duration, quantity). Used with \code{\link{calculate_composite_costs}} for
+cost calculations with multipliers.}
 }
 \value{
 A data frame with columns: from_node, to_node, probability, cost,
-  health_outcome. Each row represents a connection in the decision tree.
+  health_outcome, plus any additional columns from edge_properties. Each row
+  represents a connection in the decision tree.
 }
 \description{
 Converts a tree structure representation into a tabular format for decision tree
