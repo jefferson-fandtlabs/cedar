@@ -503,3 +503,54 @@ test_that("build_decision_tree_table validates input types", {
     "health_outcomes must be a list"
   )
 })
+
+test_that("build_decision_tree_table detects column name issues with spaces", {
+  tree <- list("1" = c(2, 3))
+  costs <- list()
+  probs <- list()
+  outcomes <- list()
+
+  # Create a data frame with a space in the column name (simulating tribble error)
+  bad_cost_assoc <- data.frame(
+    name = character(),
+    from_node = integer(),
+    stringsAsFactors = FALSE
+  )
+  # Add column with space
+  bad_cost_assoc[" to_node"] <- integer()
+
+  prob_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  # Should provide helpful error message about the space
+  expect_error(
+    build_decision_tree_table(tree, costs, probs, outcomes, bad_cost_assoc, prob_assoc, outcome_assoc),
+    "to_node.*contains extra spaces"
+  )
+
+  expect_error(
+    build_decision_tree_table(tree, costs, probs, outcomes, bad_cost_assoc, prob_assoc, outcome_assoc),
+    "tribble\\(\\) or data\\.frame\\(\\) for extra spaces"
+  )
+})
+
+test_that("build_decision_tree_table detects missing column names", {
+  tree <- list("1" = c(2, 3))
+  costs <- list()
+  probs <- list()
+  outcomes <- list()
+
+  # Create data frame missing to_node column
+  bad_prob_assoc <- data.frame(
+    name = character(),
+    from_node = integer()
+  )
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  expect_error(
+    build_decision_tree_table(tree, costs, probs, outcomes, cost_assoc, bad_prob_assoc, outcome_assoc),
+    "probability_associations is missing required columns: to_node"
+  )
+})

@@ -118,6 +118,62 @@ build_decision_tree_table <- function(tree_structure,
     stop("All probabilities must be between 0 and 1")
   }
 
+  # Helper function to validate and provide helpful error messages for column names
+  validate_association_columns <- function(df, context_name) {
+    df <- as.data.frame(df)
+    col_names <- names(df)
+
+    required_cols <- c("name", "from_node", "to_node")
+    missing_cols <- required_cols[!required_cols %in% col_names]
+
+    if (length(missing_cols) > 0) {
+      # Check for common issues like extra spaces
+      trimmed_cols <- trimmed <- gsub("^\\s+|\\s+$", "", col_names)
+
+      # Build detailed error message
+      error_msg <- paste0(
+        context_name, " is missing required columns: ",
+        paste(missing_cols, collapse = ", "), "\n",
+        "Found columns: ", paste(col_names, collapse = ", "), "\n"
+      )
+
+      # Check if any missing columns exist with spaces
+      space_issues <- c()
+      for (missing_col in missing_cols) {
+        # Check for leading/trailing spaces
+        space_variants <- c(
+          paste0(" ", missing_col),
+          paste0(missing_col, " "),
+          paste0(" ", missing_col, " ")
+        )
+        found_variants <- space_variants[space_variants %in% col_names]
+        if (length(found_variants) > 0) {
+          space_issues <- c(space_issues, paste0(
+            "  - '", missing_col, "' might be '", found_variants[1], "' (contains extra spaces)"
+          ))
+        }
+      }
+
+      if (length(space_issues) > 0) {
+        error_msg <- paste0(
+          error_msg,
+          "\nPossible issues:\n",
+          paste(space_issues, collapse = "\n"),
+          "\n\nTip: Check your tribble() or data.frame() for extra spaces in column names (e.g., '~ to_node' should be '~to_node')"
+        )
+      }
+
+      stop(error_msg)
+    }
+
+    return(df)
+  }
+
+  # Validate all association data frames
+  cost_associations <- validate_association_columns(cost_associations, "cost_associations")
+  probability_associations <- validate_association_columns(probability_associations, "probability_associations")
+  health_outcome_associations <- validate_association_columns(health_outcome_associations, "health_outcome_associations")
+
   # Build base tree structure table from tree_structure list
   tree_connections <- vector("list", length = 0)
 
