@@ -692,3 +692,231 @@ test_that("build_decision_tree_table accepts probabilities within floating point
 
   expect_equal(nrow(result), 5)
 })
+
+# Edge Properties Tests ========================================================
+
+test_that("build_decision_tree_table merges edge_properties correctly", {
+  # Simple tree
+  tree <- list(
+    "1" = c(2, 3),
+    "2" = c(4, 5)
+  )
+
+  costs <- list("c1" = 1000, "c2" = 1500)
+  probs <- list("p1" = 0.6, "p2" = 0.4)
+  outcomes <- list("q1" = 0.8, "q2" = 0.6)
+
+  cost_assoc <- data.frame(
+    name = c("c1", "c2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  outcome_assoc <- data.frame(
+    name = c("q1", "q2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  # Define edge properties
+  edge_props <- data.frame(
+    from_node = c(2, 2),
+    to_node = c(4, 5),
+    duration = c(1, 4)
+  )
+
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc,
+    edge_properties = edge_props
+  )
+
+  expect_true("duration" %in% names(result))
+  expect_equal(result$duration[result$from_node == 2 & result$to_node == 4], 1)
+  expect_equal(result$duration[result$from_node == 2 & result$to_node == 5], 4)
+})
+
+
+test_that("build_decision_tree_table works without edge_properties", {
+  # Simple tree
+  tree <- list(
+    "1" = c(2, 3),
+    "2" = c(4, 5)
+  )
+
+  costs <- list("c1" = 1000, "c2" = 1500)
+  probs <- list("p1" = 0.6, "p2" = 0.4)
+  outcomes <- list("q1" = 0.8, "q2" = 0.6)
+
+  cost_assoc <- data.frame(
+    name = c("c1", "c2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  outcome_assoc <- data.frame(
+    name = c("q1", "q2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  # No edge properties
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  expect_false("duration" %in% names(result))
+  expect_named(result, c("from_node", "to_node", "probability", "cost", "health_outcome"))
+})
+
+
+test_that("build_decision_tree_table validates edge_properties columns", {
+  tree <- list("1" = c(2, 3))
+
+  costs <- list()
+  probs <- list()
+  outcomes <- list()
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  prob_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  # Missing from_node
+  bad_edge_props <- data.frame(
+    to_node = c(2, 3),
+    duration = c(1, 2)
+  )
+
+  expect_error(
+    build_decision_tree_table(
+      tree, costs, probs, outcomes,
+      cost_assoc, prob_assoc, outcome_assoc,
+      edge_properties = bad_edge_props
+    ),
+    "edge_properties must contain 'from_node' and 'to_node' columns"
+  )
+})
+
+
+test_that("build_decision_tree_table detects duplicate edges in edge_properties", {
+  tree <- list("1" = c(2, 3))
+
+  costs <- list()
+  probs <- list()
+  outcomes <- list()
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  prob_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  # Duplicate edges
+  dup_edge_props <- data.frame(
+    from_node = c(1, 1, 2),
+    to_node = c(2, 2, 3),
+    duration = c(1, 2, 3)
+  )
+
+  expect_error(
+    build_decision_tree_table(
+      tree, costs, probs, outcomes,
+      cost_assoc, prob_assoc, outcome_assoc,
+      edge_properties = dup_edge_props
+    ),
+    "Duplicate edges found in edge_properties.*1 -> 2"
+  )
+})
+
+
+test_that("build_decision_tree_table handles partial edge_properties", {
+  # Tree with 3 edges
+  tree <- list(
+    "1" = c(2, 3),
+    "2" = c(4)
+  )
+
+  costs <- list("c1" = 1000)
+  probs <- list("p1" = 1.0)
+  outcomes <- list("q1" = 0.8)
+
+  cost_assoc <- data.frame(
+    name = "c1",
+    from_node = 2,
+    to_node = 4
+  )
+
+  prob_assoc <- data.frame(
+    name = "p1",
+    from_node = 2,
+    to_node = 4
+  )
+
+  outcome_assoc <- data.frame(
+    name = "q1",
+    from_node = 2,
+    to_node = 4
+  )
+
+  # Only properties for 2 of the 3 edges
+  partial_props <- data.frame(
+    from_node = c(2),
+    to_node = c(4),
+    duration = c(1)
+  )
+
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc,
+    edge_properties = partial_props
+  )
+
+  # Edges without properties should have NA
+  expect_true(is.na(result$duration[result$from_node == 1 & result$to_node == 2]))
+  expect_true(is.na(result$duration[result$from_node == 1 & result$to_node == 3]))
+  expect_equal(result$duration[result$from_node == 2 & result$to_node == 4], 1)
+})
+
+
+test_that("build_decision_tree_table handles multiple edge property columns", {
+  tree <- list("1" = c(2, 3))
+
+  costs <- list()
+  probs <- list()
+  outcomes <- list()
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  prob_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  # Multiple property columns
+  multi_props <- data.frame(
+    from_node = c(1, 1),
+    to_node = c(2, 3),
+    duration = c(1, 2),
+    quantity = c(10, 20),
+    custom_prop = c("A", "B")
+  )
+
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc,
+    edge_properties = multi_props
+  )
+
+  expect_true(all(c("duration", "quantity", "custom_prop") %in% names(result)))
+  expect_equal(result$duration[result$to_node == 2], 1)
+  expect_equal(result$quantity[result$to_node == 2], 10)
+  expect_equal(result$custom_prop[result$to_node == 2], "A")
+})
