@@ -72,12 +72,12 @@
 #'   c_success_year = 1000
 #' )
 #'
-#' # Define edge properties with multiple time unit columns
+#' # Define edge properties with years column (used for time offsets)
 #' edge_props <- tibble::tribble(
-#'   ~from_node, ~to_node, ~years, ~months, ~quantity,
-#'   4, 7, NA, NA, 1,
-#'   7, 10, 1, 12, 1,
-#'   10, 19, 4, 48, NA
+#'   ~from_node, ~to_node, ~years,
+#'   4, 7, 0,
+#'   7, 10, 1,
+#'   10, 19, 4
 #' )
 #'
 #' # Define cost components with mixed duration and quantity
@@ -238,8 +238,9 @@ calculate_composite_costs <- function(cost_components,
 
   # Compute time offsets for edges if edge_properties is provided
   # This ensures correct sequential discounting along paths in the decision tree
+  # The function will auto-detect the duration column (prioritizing "years")
   if (!is.null(edge_properties)) {
-    edge_properties <- compute_edge_offsets(edge_properties)
+    edge_properties <- compute_edge_offsets(edge_properties, duration_column = NULL)
   }
 
   # Initialize results list

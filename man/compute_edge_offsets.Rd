@@ -4,44 +4,88 @@
 \alias{compute_edge_offsets}
 \title{Compute Time Offsets for Edges in a Decision Tree}
 \usage{
-compute_edge_offsets(edge_properties)
+compute_edge_offsets(edge_properties, duration_column = NULL)
 }
 \arguments{
 \item{edge_properties}{A data frame containing edge definitions with columns:
 \itemize{
-  \item \code{from_node}: Starting node ID
-  \item \code{to_node}: Ending node ID
-  \item \code{duration}: Optional duration of the edge (can be NA or missing)
-  \item \code{time_offset}: Optional manual offset override
+  \item \code{from_node}: Starting node ID (required)
+  \item \code{to_node}: Ending node ID (required)
+  \item Duration column: One or more columns containing duration values (e.g.,
+    "years", "months", "days", "weeks", "hours"). Used to calculate time offsets.
+  \item \code{time_offset}: Optional manual offset override. If present, existing
+    values are preserved.
 }}
+
+\item{duration_column}{Character string specifying which column to use for
+duration values (e.g., "years", "months", "days"). If NULL (default), the
+function auto-detects in this priority order: "years", "months", "weeks",
+"days", "hours". If no duration columns are found, all offsets are set to 0
+with a warning.}
 }
 \value{
 A data frame identical to edge_properties but with an added (or updated)
-  \code{time_offset} column containing the computed cumulative time offsets.
+  \code{time_offset} column containing the computed cumulative time offsets in years.
 }
 \description{
 Calculates cumulative time offsets for each edge in a decision tree, starting
 from the root node (node 1) at time t=0. The offset represents when each edge's
-time period begins in the overall timeline.
+time period begins in the overall timeline, which is critical for proper
+discounting calculations.
 }
 \details{
 The function traces paths from the root node (node 1) through the tree,
 accumulating time as it goes. For each edge:
 \itemize{
-  \item The offset = cumulative time at the from_node
-  \item The cumulative time at to_node = cumulative time at from_node + edge duration
+  \item The offset = cumulative time at the from_node (in years)
+  \item The cumulative time at to_node = cumulative time at from_node + edge duration (in years)
   \item NA or missing durations are treated as 0
   \item If time_offset is already present in edge_properties, it is preserved
+  \item Duration values are automatically converted to years for consistent offset calculation
 }
+
+**Duration Column Selection:**
+
+If \code{duration_column} is not specified, the function searches for duration
+columns in this order:
+\enumerate{
+  \item "years" - Standard for discounting calculations
+  \item "months" - Converted to years (month / 12)
+  \item "weeks" - Converted to years (week / 52.1775)
+  \item "days" - Converted to years (day / 365.25)
+  \item "hours" - Converted to years (hour / 8766)
+}
+
+If multiple duration columns exist, specifying \code{duration_column} allows
+you to control which one is used for offset calculation.
 }
 \examples{
-# Simple sequential chain
+# Example 1: Using "years" column (auto-detected)
 edges <- data.frame(
   from_node = c(1, 4, 7, 11),
   to_node = c(4, 7, 11, 13),
-  duration = c(0, 1, 1, 1)
+  years = c(0, 1, 1, 1)
 )
 compute_edge_offsets(edges)
 # Returns offsets: [0, 0, 1, 2]
+
+# Example 2: Using "months" column with explicit specification
+edges_months <- data.frame(
+  from_node = c(1, 2, 3),
+  to_node = c(2, 3, 4),
+  months = c(0, 6, 12)
+)
+compute_edge_offsets(edges_months, duration_column = "months")
+# Returns offsets in years: [0, 0, 0.5]
+
+# Example 3: Multiple duration columns - specify which to use
+edges_mixed <- data.frame(
+  from_node = c(1, 2),
+  to_node = c(2, 3),
+  years = c(1, 2),
+  months = c(12, 24)
+)
+compute_edge_offsets(edges_mixed, duration_column = "years")
+# Uses "years" column for offsets
 
 }
