@@ -4,7 +4,7 @@
 \alias{apply_discount}
 \title{Apply Time Discounting to Costs}
 \usage{
-apply_discount(cost, time_periods, discount_rate)
+apply_discount(cost, time_periods, discount_rate, time_offset)
 }
 \arguments{
 \item{cost}{Numeric. The cost per time period (e.g., annual cost)}
@@ -12,19 +12,24 @@ apply_discount(cost, time_periods, discount_rate)
 \item{time_periods}{Numeric. The number of time periods over which the cost occurs}
 
 \item{discount_rate}{Numeric. The discount rate as a decimal (e.g., 0.03 for 3%)}
+
+\item{time_offset}{Numeric. The starting time point in the overall timeline.
+A value of 0 means the first period is t=0 to t=1 (undiscounted),
+a value of 1 means the first period is t=1 to t=2 (discounted once), etc.}
 }
 \value{
 Numeric. The discounted present value of the cost
 }
 \description{
 Calculates the present value of a cost that occurs over multiple time periods
-using a discount rate. This is an internal helper function used by
-\code{\link{calculate_composite_costs}}.
+using a discount rate, starting from a specified time offset. This is an internal
+helper function used by \code{\link{calculate_composite_costs}}.
 }
 \details{
-The function calculates the present value using the standard discounting formula:
+The function calculates the present value using the standard discounting formula,
+adjusted for the time offset:
 
-\deqn{PV = \sum_{t=1}^{T} \frac{cost}{(1 + r)^t}}
+\deqn{PV = \sum_{t=offset}^{offset+T-1} \frac{cost}{(1 + r)^t}}
 
 where:
 \itemize{
@@ -32,21 +37,30 @@ where:
   \item cost = Cost per time period
   \item r = Discount rate
   \item T = Total number of time periods
-  \item t = Time period index (1 to T)
+  \item offset = Time offset (when the cost period begins)
+  \item t = Time period index (offset to offset+T-1)
 }
+
+The time_offset parameter allows costs to be correctly discounted based on their
+position in a decision tree. For example, if a cost occurs in years 2-3, it should
+use time_offset=1 (starting after the first year).
 }
 \examples{
-# Calculate present value of $5000/year for 3 years at 3\% discount rate
-apply_discount(5000, 3, 0.03)
-# Returns: 14282.46
+# Calculate PV of $1000/year for 1 year starting at t=0 (undiscounted)
+apply_discount(1000, 1, 0.03, 0)
+# Returns: 1000 (discount factor = (1.03)^0 = 1.0)
 
-# No discounting (0\% rate)
-apply_discount(5000, 3, 0)
+# Calculate PV of $1000/year for 1 year starting at t=1
+apply_discount(1000, 1, 0.03, 1)
+# Returns: 970.87 (discount factor = (1.03)^1 = 1.03)
+
+# Calculate PV of $1000/year for 3 years starting at t=2
+apply_discount(1000, 3, 0.03, 2)
+# Discounts years 2, 3, 4 with factors (1.03)^2, (1.03)^3, (1.03)^4
+
+# No discounting (0\% rate), offset doesn't matter
+apply_discount(5000, 3, 0, 0)
 # Returns: 15000
-
-# Single period (equivalent to simple discounting)
-apply_discount(5000, 1, 0.03)
-# Returns: 4854.369
 
 }
 \seealso{

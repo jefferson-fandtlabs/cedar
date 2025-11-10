@@ -1,8 +1,8 @@
 test_that("calculate_composite_costs validates cost_components class", {
   # Not a cost_components object
   bad_components <- tibble::tribble(
-    ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-    "c_comp", "c_base", "quantity", 2, 1, 2
+    ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+    "c_comp", "c_base", NA, NA, 2, 1, 2
   )
 
   base_costs <- list(c_base = 1000)
@@ -17,8 +17,8 @@ test_that("calculate_composite_costs validates cost_components class", {
 test_that("calculate_composite_costs validates base_costs is named list", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "quantity", 2, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", NA, NA, 2, 1, 2
     )
   )
 
@@ -39,8 +39,8 @@ test_that("calculate_composite_costs validates base_costs is named list", {
 test_that("calculate_composite_costs validates discount_rate", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "quantity", 2, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", NA, NA, 2, 1, 2
     )
   )
 
@@ -68,8 +68,8 @@ test_that("calculate_composite_costs validates discount_rate", {
 test_that("calculate_composite_costs checks for missing base costs", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_missing", "quantity", 2, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_missing", NA, NA, 2, 1, 2
     )
   )
 
@@ -82,11 +82,11 @@ test_that("calculate_composite_costs checks for missing base costs", {
 })
 
 
-test_that("calculate_composite_costs requires edge_properties when needed", {
+test_that("calculate_composite_costs requires edge_properties when duration_value is NA", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "duration", NA, 1, 2  # NA requires edge lookup
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", "years", NA, NA, 1, 2  # NA requires edge lookup
     )
   )
 
@@ -94,7 +94,24 @@ test_that("calculate_composite_costs requires edge_properties when needed", {
 
   expect_error(
     calculate_composite_costs(components, base_costs, edge_properties = NULL),
-    "edge_properties required: some cost components have NA multiplier_value"
+    "edge_properties required: some cost components have NA duration_value or quantity_value"
+  )
+})
+
+
+test_that("calculate_composite_costs requires edge_properties when quantity_value is NA", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", NA, NA, NA, 1, 2  # NA requires edge lookup
+    )
+  )
+
+  base_costs <- list(c_base = 1000)
+
+  expect_error(
+    calculate_composite_costs(components, base_costs, edge_properties = NULL),
+    "edge_properties required: some cost components have NA duration_value or quantity_value"
   )
 })
 
@@ -102,8 +119,8 @@ test_that("calculate_composite_costs requires edge_properties when needed", {
 test_that("calculate_composite_costs validates edge_properties structure", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "duration", NA, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", "years", NA, NA, 1, 2
     )
   )
 
@@ -111,7 +128,7 @@ test_that("calculate_composite_costs validates edge_properties structure", {
 
   # Missing from_node
   bad_edge_props <- tibble::tribble(
-    ~to_node, ~duration,
+    ~to_node, ~years,
     2, 3
   )
 
@@ -120,7 +137,7 @@ test_that("calculate_composite_costs validates edge_properties structure", {
     "edge_properties must contain 'from_node' and 'to_node' columns"
   )
 
-  # Missing multiplier_type column
+  # Missing duration_unit column
   bad_edge_props2 <- tibble::tribble(
     ~from_node, ~to_node,
     1, 2
@@ -128,7 +145,30 @@ test_that("calculate_composite_costs validates edge_properties structure", {
 
   expect_error(
     calculate_composite_costs(components, base_costs, bad_edge_props2),
-    "Missing columns in edge_properties.*duration"
+    "Missing columns in edge_properties for duration lookup: years"
+  )
+})
+
+
+test_that("calculate_composite_costs requires quantity column when needed", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", NA, NA, NA, 1, 2  # NA quantity requires edge lookup
+    )
+  )
+
+  base_costs <- list(c_base = 1000)
+
+  # Missing quantity column
+  bad_edge_props <- tibble::tribble(
+    ~from_node, ~to_node,
+    1, 2
+  )
+
+  expect_error(
+    calculate_composite_costs(components, base_costs, bad_edge_props),
+    "Missing 'quantity' column in edge_properties"
   )
 })
 
@@ -136,8 +176,8 @@ test_that("calculate_composite_costs validates edge_properties structure", {
 test_that("calculate_composite_costs calculates simple quantity multiplier", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "quantity", 2, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", NA, NA, 2, 1, 2
     )
   )
 
@@ -149,53 +189,187 @@ test_that("calculate_composite_costs calculates simple quantity multiplier", {
 })
 
 
-test_that("calculate_composite_costs handles multiplier_type = none", {
+test_that("calculate_composite_costs handles one-time costs (quantity = 1)", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "none", NA, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_surgery", "c_surgery_base", NA, NA, 1, 1, 2
     )
   )
 
-  base_costs <- list(c_base = 1000)
+  base_costs <- list(c_surgery_base = 50000)
 
   result <- calculate_composite_costs(components, base_costs)
 
-  expect_equal(result$c_comp, 1000)
+  expect_equal(result$c_surgery, 50000)
 })
 
 
-test_that("calculate_composite_costs looks up multiplier from edge_properties", {
+test_that("calculate_composite_costs converts years duration correctly", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "duration", NA, 7, 10
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_annual", "years", 5, NA, 1, 2
     )
   )
 
-  base_costs <- list(c_base = 5000)
+  base_costs <- list(c_annual = 1000)
 
-  edge_props <- tibble::tribble(
-    ~from_node, ~to_node, ~duration,
-    7, 10, 1
-  )
+  result <- calculate_composite_costs(components, base_costs, discount_rate = NULL)
 
-  result <- calculate_composite_costs(components, base_costs, edge_props)
-
-  # Without discounting, should be 5000 * 1 = 5000
+  # 1000 * 5 years = 5000
   expect_equal(result$c_comp, 5000)
 })
 
 
-test_that("calculate_composite_costs applies discounting for duration multipliers", {
+test_that("calculate_composite_costs converts months duration correctly", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "duration", 3, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_annual", "months", 24, NA, 1, 2
     )
   )
 
-  base_costs <- list(c_base = 5000)
+  base_costs <- list(c_annual = 1200)  # Annual cost
+
+  result <- calculate_composite_costs(components, base_costs, discount_rate = NULL)
+
+  # 24 months = 2 years, so 1200 * 2 = 2400
+  expect_equal(result$c_comp, 2400)
+})
+
+
+test_that("calculate_composite_costs converts days duration correctly", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_annual", "days", 365.25, NA, 1, 2
+    )
+  )
+
+  base_costs <- list(c_annual = 1000)
+
+  result <- calculate_composite_costs(components, base_costs, discount_rate = NULL)
+
+  # 365.25 days = 1 year, so 1000 * 1 = 1000
+  expect_equal(result$c_comp, 1000, tolerance = 0.01)
+})
+
+
+test_that("calculate_composite_costs converts weeks duration correctly", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_annual", "weeks", 52.17857, NA, 1, 2
+    )
+  )
+
+  base_costs <- list(c_annual = 1000)
+
+  result <- calculate_composite_costs(components, base_costs, discount_rate = NULL)
+
+  # 52.17857 weeks = 1 year, so 1000 * 1 = 1000
+  expect_equal(result$c_comp, 1000, tolerance = 0.01)
+})
+
+
+test_that("calculate_composite_costs converts hours duration correctly", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_annual", "hours", 8766, NA, 1, 2
+    )
+  )
+
+  base_costs <- list(c_annual = 1000)
+
+  result <- calculate_composite_costs(components, base_costs, discount_rate = NULL)
+
+  # 8766 hours = 1 year, so 1000 * 1 = 1000
+  expect_equal(result$c_comp, 1000, tolerance = 0.01)
+})
+
+
+test_that("calculate_composite_costs looks up duration from edge_properties", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_annual", "years", NA, NA, 7, 10
+    )
+  )
+
+  base_costs <- list(c_annual = 5000)
+
+  edge_props <- tibble::tribble(
+    ~from_node, ~to_node, ~years,
+    7, 10, 3
+  )
+
+  result <- calculate_composite_costs(components, base_costs, edge_props)
+
+  # 5000 * 3 years = 15000 (no discounting)
+  expect_equal(result$c_comp, 15000)
+})
+
+
+test_that("calculate_composite_costs looks up different duration units from edge_properties", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_treatment", "c_annual", "years", NA, NA, 1, 2,
+      "c_treatment", "c_annual", "months", NA, NA, 2, 3,
+      "c_treatment", "c_annual", "days", NA, NA, 3, 4
+    )
+  )
+
+  base_costs <- list(c_annual = 1000)
+
+  edge_props <- tibble::tribble(
+    ~from_node, ~to_node, ~years, ~months, ~days,
+    1, 2, 2, NA, NA,
+    2, 3, NA, 12, NA,
+    3, 4, NA, NA, 365.25
+  )
+
+  result <- calculate_composite_costs(components, base_costs, edge_props, discount_rate = NULL)
+
+  # 2 years + 12 months (1 year) + 365.25 days (1 year) = 4 years total
+  # 1000 * 4 = 4000
+  expect_equal(result$c_treatment, 4000, tolerance = 0.01)
+})
+
+
+test_that("calculate_composite_costs looks up quantity from edge_properties", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_injection", NA, NA, NA, 4, 7
+    )
+  )
+
+  base_costs <- list(c_injection = 30000)
+
+  edge_props <- tibble::tribble(
+    ~from_node, ~to_node, ~quantity,
+    4, 7, 2
+  )
+
+  result <- calculate_composite_costs(components, base_costs, edge_props)
+
+  # 30000 * 2 = 60000
+  expect_equal(result$c_comp, 60000)
+})
+
+
+test_that("calculate_composite_costs applies discounting only to duration multipliers", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_annual", "years", 3, NA, 1, 2
+    )
+  )
+
+  base_costs <- list(c_annual = 5000)
 
   result_with_discount <- calculate_composite_costs(
     components,
@@ -221,12 +395,12 @@ test_that("calculate_composite_costs applies discounting for duration multiplier
 test_that("calculate_composite_costs does not discount quantity multipliers", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "quantity", 3, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_injection", NA, NA, 3, 1, 2
     )
   )
 
-  base_costs <- list(c_base = 30000)
+  base_costs <- list(c_injection = 30000)
 
   # Even with discount_rate, quantity should not be discounted
   result <- calculate_composite_costs(
@@ -242,10 +416,10 @@ test_that("calculate_composite_costs does not discount quantity multipliers", {
 test_that("calculate_composite_costs sums multiple components for same cost_label", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base1", "quantity", 2, 1, 2,
-      "c_comp", "c_base2", "quantity", 3, 2, 3,
-      "c_comp", "c_base3", "none", NA, 3, 4
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base1", NA, NA, 2, 1, 2,
+      "c_comp", "c_base2", NA, NA, 3, 2, 3,
+      "c_comp", "c_base3", NA, NA, 1, 3, 4
     )
   )
 
@@ -262,12 +436,33 @@ test_that("calculate_composite_costs sums multiple components for same cost_labe
 })
 
 
+test_that("calculate_composite_costs handles mixed duration and quantity components", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_treatment", "c_injection", NA, NA, 2, 1, 2,
+      "c_treatment", "c_annual", "years", 5, NA, 2, 3
+    )
+  )
+
+  base_costs <- list(
+    c_injection = 30000,
+    c_annual = 1000
+  )
+
+  result <- calculate_composite_costs(components, base_costs, discount_rate = NULL)
+
+  # 30000 * 2 + 1000 * 5 = 60000 + 5000 = 65000
+  expect_equal(result$c_treatment, 65000)
+})
+
+
 test_that("calculate_composite_costs handles multiple cost_labels", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp1", "c_base", "quantity", 2, 1, 2,
-      "c_comp2", "c_base", "quantity", 3, 2, 3
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp1", "c_base", NA, NA, 2, 1, 2,
+      "c_comp2", "c_base", NA, NA, 3, 2, 3
     )
   )
 
@@ -281,8 +476,8 @@ test_that("calculate_composite_costs handles multiple cost_labels", {
 })
 
 
-test_that("calculate_composite_costs reproduces c_biol_2_success example", {
-  # Reproduce the example from Part2_Model_McMillanWilhoit_CP.R
+test_that("calculate_composite_costs reproduces c_biol_2_success example with new structure", {
+  # Reproduce the example with new duration_unit/quantity_value structure
   base_costs <- list(
     c_biologic = 30000,
     c_fail_year = 5000,
@@ -290,19 +485,19 @@ test_that("calculate_composite_costs reproduces c_biol_2_success example", {
   )
 
   edge_props <- tibble::tribble(
-    ~from_node, ~to_node, ~duration,
-    4, 7, 1,    # Placeholder (quantity is specified)
+    ~from_node, ~to_node, ~years,
+    4, 7, 1,    # Placeholder (quantity is specified explicitly)
     7, 10, 1,   # 1 year between 7 and 10
     10, 19, 4   # 4 years between 10 and 19
   )
 
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_biol_2_success", "c_biologic", "quantity", 1, 4, 7,
-      "c_biol_2_success", "c_biologic", "quantity", 1, 7, 10,
-      "c_biol_2_success", "c_fail_year", "duration", NA, 7, 10,
-      "c_biol_2_success", "c_success_year", "duration", NA, 10, 19
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_biol_2_success", "c_biologic", NA, NA, 1, 4, 7,
+      "c_biol_2_success", "c_biologic", NA, NA, 1, 7, 10,
+      "c_biol_2_success", "c_fail_year", "years", NA, NA, 7, 10,
+      "c_biol_2_success", "c_success_year", "years", NA, NA, 10, 19
     )
   )
 
@@ -336,8 +531,8 @@ test_that("calculate_composite_costs reproduces c_biol_2_success example", {
 test_that("calculate_composite_costs errors on missing edge property", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "duration", NA, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", "years", NA, NA, 1, 2
     )
   )
 
@@ -345,7 +540,7 @@ test_that("calculate_composite_costs errors on missing edge property", {
 
   # Edge properties for different edge
   edge_props <- tibble::tribble(
-    ~from_node, ~to_node, ~duration,
+    ~from_node, ~to_node, ~years,
     2, 3, 1
   )
 
@@ -359,8 +554,8 @@ test_that("calculate_composite_costs errors on missing edge property", {
 test_that("calculate_composite_costs errors on duplicate edge property", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "duration", NA, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", "years", NA, NA, 1, 2
     )
   )
 
@@ -368,7 +563,7 @@ test_that("calculate_composite_costs errors on duplicate edge property", {
 
   # Duplicate edge properties
   edge_props <- tibble::tribble(
-    ~from_node, ~to_node, ~duration,
+    ~from_node, ~to_node, ~years,
     1, 2, 1,
     1, 2, 2
   )
@@ -380,35 +575,58 @@ test_that("calculate_composite_costs errors on duplicate edge property", {
 })
 
 
-test_that("calculate_composite_costs errors on NA in edge_properties lookup", {
+test_that("calculate_composite_costs errors on NA in duration edge_properties lookup", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base", "duration", NA, 1, 2
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", "years", NA, NA, 1, 2
     )
   )
 
   base_costs <- list(c_base = 1000)
 
-  # Edge property has NA duration
+  # Edge property has NA years
   edge_props <- tibble::tribble(
-    ~from_node, ~to_node, ~duration,
+    ~from_node, ~to_node, ~years,
     1, 2, NA
   )
 
   expect_error(
     calculate_composite_costs(components, base_costs, edge_props),
-    "NA value in edge_properties\\$duration for edge 1 -> 2"
+    "NA value in edge_properties\\$years for edge 1 -> 2"
   )
 })
 
 
-test_that("calculate_composite_costs handles mixed specified and lookup multipliers", {
+test_that("calculate_composite_costs errors on NA in quantity edge_properties lookup", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp", "c_base1", "quantity", 2, 1, 2,      # Specified
-      "c_comp", "c_base2", "duration", NA, 7, 10     # Lookup
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base", NA, NA, NA, 1, 2
+    )
+  )
+
+  base_costs <- list(c_base = 1000)
+
+  # Edge property has NA quantity
+  edge_props <- tibble::tribble(
+    ~from_node, ~to_node, ~quantity,
+    1, 2, NA
+  )
+
+  expect_error(
+    calculate_composite_costs(components, base_costs, edge_props),
+    "NA value in edge_properties\\$quantity for edge 1 -> 2"
+  )
+})
+
+
+test_that("calculate_composite_costs handles mixed specified and lookup values", {
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp", "c_base1", NA, NA, 2, 1, 2,              # Quantity: explicit
+      "c_comp", "c_base2", "years", NA, NA, 7, 10        # Duration: lookup
     )
   )
 
@@ -418,7 +636,7 @@ test_that("calculate_composite_costs handles mixed specified and lookup multipli
   )
 
   edge_props <- tibble::tribble(
-    ~from_node, ~to_node, ~duration,
+    ~from_node, ~to_node, ~years,
     7, 10, 4
   )
 
@@ -442,9 +660,9 @@ test_that("calculate_composite_costs handles mixed specified and lookup multipli
 test_that("calculate_composite_costs returns named list with correct structure", {
   components <- specify_cost_components(
     tibble::tribble(
-      ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-      "c_comp1", "c_base", "quantity", 2, 1, 2,
-      "c_comp2", "c_base", "quantity", 3, 2, 3
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_comp1", "c_base", NA, NA, 2, 1, 2,
+      "c_comp2", "c_base", NA, NA, 3, 2, 3
     )
   )
 
@@ -455,4 +673,53 @@ test_that("calculate_composite_costs returns named list with correct structure",
   expect_type(result, "list")
   expect_named(result, c("c_comp1", "c_comp2"))
   expect_true(all(sapply(result, is.numeric)))
+})
+
+
+test_that("calculate_composite_costs handles complex realistic scenario with multiple time units", {
+  # Scenario: Hospital stay with mixed time units
+  base_costs <- list(
+    c_icu_bed = 5000,      # per day
+    c_regular_bed = 1000,  # per day
+    c_medication = 100,    # per day
+    c_procedure = 50000    # one-time
+  )
+
+  edge_props <- tibble::tribble(
+    ~from_node, ~to_node, ~days, ~weeks, ~months,
+    1, 2, 7, NA, NA,      # 7 days ICU
+    2, 3, 14, NA, NA,     # 14 days regular
+    3, 4, NA, 8, NA,      # 8 weeks recovery
+    4, 5, NA, NA, 6       # 6 months follow-up
+  )
+
+  components <- specify_cost_components(
+    tibble::tribble(
+      ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+      "c_hospital", "c_icu_bed", "days", NA, NA, 1, 2,
+      "c_hospital", "c_regular_bed", "days", NA, NA, 2, 3,
+      "c_hospital", "c_medication", "weeks", NA, NA, 3, 4,
+      "c_hospital", "c_medication", "months", NA, NA, 4, 5,
+      "c_hospital", "c_procedure", NA, NA, 1, 1, 2
+    )
+  )
+
+  result <- calculate_composite_costs(components, base_costs, edge_props, discount_rate = NULL)
+
+  # Calculate expected:
+  # ICU: 5000 * 7 days = 5000 * (7/365.25) years = 5000 * 0.01916... years
+  # Regular: 1000 * 14 days
+  # Recovery medication: 100 * 8 weeks
+  # Follow-up medication: 100 * 6 months
+  # Procedure: 50000 * 1
+
+  icu_cost <- 5000 * convert_duration_to_years(7, "days")
+  regular_cost <- 1000 * convert_duration_to_years(14, "days")
+  recovery_cost <- 100 * convert_duration_to_years(8, "weeks")
+  followup_cost <- 100 * convert_duration_to_years(6, "months")
+  procedure_cost <- 50000
+
+  expected <- icu_cost + regular_cost + recovery_cost + followup_cost + procedure_cost
+
+  expect_equal(result$c_hospital, expected, tolerance = 0.01)
 })

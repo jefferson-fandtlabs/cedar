@@ -2,23 +2,26 @@
 #'
 #' @description
 #' Calculates composite costs from specified cost components, base costs, and
-#' edge properties. This function handles cost multipliers (duration, quantity),
-#' optional time discounting, and aggregation of multiple cost components into
-#' final composite cost values.
+#' edge properties. This function handles cost multipliers (duration in various
+#' time units, quantity), optional time discounting, and aggregation of multiple
+#' cost components into final composite cost values.
 #'
 #' @param cost_components A cost_components object created by
 #'   \code{\link{specify_cost_components}}
 #' @param base_costs A named list of primitive cost values. Names must match the
 #'   \code{base_cost_name} values in \code{cost_components}
 #' @param edge_properties A data frame with columns for edge properties. Must
-#'   include \code{from_node} and \code{to_node} columns, plus columns matching
-#'   the \code{multiplier_type} values used in \code{cost_components} (e.g.,
-#'   "duration", "quantity"). Only required if \code{cost_components} uses
-#'   NA multiplier_value entries.
+#'   include \code{from_node} and \code{to_node} columns. For duration-based
+#'   costs with NA duration_value, must include columns matching the
+#'   \code{duration_unit} values (e.g., "years", "months", "days"). For
+#'   quantity-based costs with NA quantity_value, must include a "quantity"
+#'   column. Only required if \code{cost_components} uses NA duration_value
+#'   or quantity_value entries.
 #' @param discount_rate Optional numeric discount rate as a decimal (e.g., 0.03
 #'   for 3%). If NULL (default), no discounting is applied. When provided,
-#'   discounting is automatically applied to components with
-#'   \code{multiplier_type = "duration"}
+#'   discounting is automatically applied to duration-based components (after
+#'   converting durations to years). Quantity-based components are never
+#'   discounted.
 #'
 #' @details
 #' The function processes cost components in the following steps:
@@ -28,20 +31,27 @@
 #'     root at time 0). This ensures costs are discounted correctly based on when
 #'     they occur in the tree's timeline.
 #'   \item For each cost component, retrieve the base cost value from \code{base_costs}
-#'   \item Determine the multiplier value:
-#'     \itemize{
-#'       \item If \code{multiplier_value} is not NA, use that value
-#'       \item If \code{multiplier_value} is NA, lookup from \code{edge_properties}
-#'         using \code{multiplier_type} as the column name and matching
-#'         \code{edge_from} and \code{edge_to}
-#'       \item If \code{multiplier_type = "none"}, use multiplier = 1
+#'   \item Determine if component is duration-based or quantity-based:
+#'     \describe{
+#'       \item{Duration-based}{Has non-NA \code{duration_unit}. Used for time-based
+#'         costs like annual medical costs or monthly medication.}
+#'       \item{Quantity-based}{Has non-NA \code{quantity_value}. Used for countable
+#'         items like injections, surgeries, or one-time costs.}
 #'     }
-#'   \item Apply discounting if:
+#'   \item For duration-based costs:
 #'     \itemize{
-#'       \item \code{discount_rate} is provided (not NULL)
-#'       \item AND \code{multiplier_type = "duration"}
-#'       \item Discounting uses the edge's time offset to ensure costs are discounted
-#'         based on their cumulative time from the root node
+#'       \item If \code{duration_value} is not NA, use that value
+#'       \item If \code{duration_value} is NA, lookup from \code{edge_properties}
+#'         using \code{duration_unit} as the column name
+#'       \item Convert duration to years using \code{\link{convert_duration_to_years}}
+#'       \item Apply discounting if \code{discount_rate} is provided (uses edge's
+#'         time offset)
+#'     }
+#'   \item For quantity-based costs:
+#'     \itemize{
+#'       \item If \code{quantity_value} is numeric, use that value
+#'       \item If \code{quantity_value} is NA, lookup from \code{edge_properties$quantity}
+#'       \item Simple multiplication (no time conversion or discounting)
 #'     }
 #'   \item Calculate component cost: \code{base_cost * multiplier * discount_factor}
 #'   \item Sum all components for each unique \code{cost_label}
@@ -62,20 +72,21 @@
 #'   c_success_year = 1000
 #' )
 #'
-#' # Define edge properties
+#' # Define edge properties with multiple time unit columns
 #' edge_props <- tibble::tribble(
-#'   ~from_node, ~to_node, ~duration,
-#'   7, 10, 1,
-#'   10, 19, 4
+#'   ~from_node, ~to_node, ~years, ~months, ~quantity,
+#'   4, 7, NA, NA, 1,
+#'   7, 10, 1, 12, 1,
+#'   10, 19, 4, 48, NA
 #' )
 #'
-#' # Define cost components
+#' # Define cost components with mixed duration and quantity
 #' cost_comps <- tibble::tribble(
-#'   ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-#'   "c_biol_2_success", "c_biologic", "quantity", 1, 4, 7,
-#'   "c_biol_2_success", "c_biologic", "quantity", 1, 7, 10,
-#'   "c_biol_2_success", "c_fail_year", "duration", NA, 7, 10,
-#'   "c_biol_2_success", "c_success_year", "duration", NA, 10, 19
+#'   ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+#'   "c_biol_2_success", "c_biologic", NA, NA, 1, 4, 7,       # Quantity: 1 injection
+#'   "c_biol_2_success", "c_biologic", NA, NA, 1, 7, 10,      # Quantity: 1 injection
+#'   "c_biol_2_success", "c_fail_year", "years", NA, NA, 7, 10,    # Duration: lookup years
+#'   "c_biol_2_success", "c_success_year", "years", NA, NA, 10, 19  # Duration: lookup years
 #' ) %>%
 #'   specify_cost_components()
 #'
@@ -94,11 +105,21 @@
 #'   edge_props,
 #'   discount_rate = NULL
 #' )
+#'
+#' # Example with multiple time units
+#' cost_comps_mixed <- tibble::tribble(
+#'   ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+#'   "c_treatment", "c_daily_med", "days", 30, NA, 1, 2,
+#'   "c_treatment", "c_monthly_visit", "months", 6, NA, 2, 3,
+#'   "c_treatment", "c_annual_followup", "years", 2, NA, 3, 4
+#' ) %>%
+#'   specify_cost_components()
 #' }
 #'
 #' @seealso
 #'   \code{\link{specify_cost_components}},
 #'   \code{\link{apply_discount}},
+#'   \code{\link{convert_duration_to_years}},
 #'   \code{\link{compute_edge_offsets}},
 #'   \code{\link{build_decision_tree_table}}
 #'
@@ -145,12 +166,32 @@ calculate_composite_costs <- function(cost_components,
   }
 
   # Check if edge_properties needed and provided
-  needs_edge_lookup <- any(is.na(cost_components$multiplier_value) &
-                            cost_components$multiplier_type != "none")
+  needs_duration_lookup <- any(!is.na(cost_components$duration_unit) &
+                                 is.na(cost_components$duration_value))
+  needs_quantity_lookup <- any(!is.na(cost_components$quantity_value) &
+                                 is.na(cost_components$quantity_value) == FALSE &
+                                 is.numeric(cost_components$quantity_value) == FALSE) ||
+                            any(is.na(cost_components$quantity_value) &
+                                 !is.na(cost_components$quantity_value) == TRUE &
+                                 cost_components$quantity_value != cost_components$quantity_value)
+
+  # Simpler check: need edge lookup if any duration_value or quantity_value is truly NA
+  # (not just checking the column type)
+  needs_edge_lookup <- FALSE
+  for (i in seq_len(nrow(cost_components))) {
+    if (!is.na(cost_components$duration_unit[i]) && is.na(cost_components$duration_value[i])) {
+      needs_edge_lookup <- TRUE
+      break
+    }
+    if (is.na(cost_components$duration_unit[i]) && is.na(cost_components$quantity_value[i])) {
+      needs_edge_lookup <- TRUE
+      break
+    }
+  }
 
   if (needs_edge_lookup && is.null(edge_properties)) {
     stop(
-      "edge_properties required: some cost components have NA multiplier_value",
+      "edge_properties required: some cost components have NA duration_value or quantity_value",
       call. = FALSE
     )
   }
@@ -164,17 +205,32 @@ calculate_composite_costs <- function(cost_components,
       )
     }
 
-    # Check that required multiplier_type columns exist in edge_properties
-    needed_types <- unique(cost_components$multiplier_type[
-      is.na(cost_components$multiplier_value) &
-      cost_components$multiplier_type != "none"
+    # Check that required duration_unit columns exist in edge_properties
+    needed_duration_units <- unique(cost_components$duration_unit[
+      !is.na(cost_components$duration_unit) &
+      is.na(cost_components$duration_value)
     ])
 
-    missing_types <- setdiff(needed_types, names(edge_properties))
-    if (length(missing_types) > 0) {
+    if (length(needed_duration_units) > 0) {
+      missing_duration_cols <- setdiff(needed_duration_units, names(edge_properties))
+      if (length(missing_duration_cols) > 0) {
+        stop(
+          "Missing columns in edge_properties for duration lookup: ",
+          paste(missing_duration_cols, collapse = ", "),
+          "\nRequired because some components use these duration_unit values with NA duration_value.",
+          call. = FALSE
+        )
+      }
+    }
+
+    # Check if quantity column needed
+    needs_quantity_col <- any(is.na(cost_components$duration_unit) &
+                               is.na(cost_components$quantity_value))
+
+    if (needs_quantity_col && !"quantity" %in% names(edge_properties)) {
       stop(
-        "Missing columns in edge_properties for multiplier lookup: ",
-        paste(missing_types, collapse = ", "),
+        "Missing 'quantity' column in edge_properties. ",
+        "Required because some components have NA quantity_value.",
         call. = FALSE
       )
     }
@@ -208,74 +264,158 @@ calculate_composite_costs <- function(cost_components,
       # Get base cost value
       base_cost_value <- base_costs[[component$base_cost_name]]
 
-      # Determine multiplier value
-      if (component$multiplier_type == "none") {
-        multiplier <- 1
-      } else if (!is.na(component$multiplier_value)) {
-        multiplier <- component$multiplier_value
-      } else {
-        # Lookup from edge_properties
-        edge_match <- edge_properties$from_node == component$edge_from &
-                      edge_properties$to_node == component$edge_to
+      # Determine if duration-based or quantity-based
+      # Key: duration_unit presence determines the cost type
+      is_duration <- !is.na(component$duration_unit)
+      is_quantity <- is.na(component$duration_unit)  # Quantity-based when duration_unit is NA
 
-        if (!any(edge_match)) {
-          stop(
-            sprintf(
-              "No edge property found for edge %d -> %d (cost_label: %s, base_cost: %s)",
-              component$edge_from,
-              component$edge_to,
-              component$cost_label,
-              component$base_cost_name
-            ),
-            call. = FALSE
-          )
-        }
+      if (is_duration) {
+        # DURATION-BASED COST
+        # -----------------
 
-        if (sum(edge_match) > 1) {
-          stop(
-            sprintf(
-              "Multiple edge properties found for edge %d -> %d",
-              component$edge_from,
-              component$edge_to
-            ),
-            call. = FALSE
-          )
-        }
-
-        multiplier_col <- component$multiplier_type
-        multiplier <- edge_properties[[multiplier_col]][edge_match]
-
-        if (is.na(multiplier)) {
-          stop(
-            sprintf(
-              "NA value in edge_properties$%s for edge %d -> %d",
-              multiplier_col,
-              component$edge_from,
-              component$edge_to
-            ),
-            call. = FALSE
-          )
-        }
-      }
-
-      # Calculate component cost
-      if (component$multiplier_type == "duration" && !is.null(discount_rate)) {
-        # Apply discounting for duration-based costs with time offset
-        # Determine time offset for this edge
-        if (!is.null(edge_properties)) {
-          # Look up the time offset for this specific edge
+        # Get duration value
+        if (!is.na(component$duration_value)) {
+          # Use explicit duration value
+          duration_in_units <- component$duration_value
+        } else {
+          # Lookup from edge_properties using duration_unit as column name
           edge_match <- edge_properties$from_node == component$edge_from &
                         edge_properties$to_node == component$edge_to
-          time_offset <- edge_properties$time_offset[edge_match]
-        } else {
-          # No edge_properties provided, use default offset=1 (old behavior)
-          time_offset <- 1
+
+          if (!any(edge_match)) {
+            stop(
+              sprintf(
+                "No edge property found for edge %d -> %d (cost_label: %s, base_cost: %s)",
+                component$edge_from,
+                component$edge_to,
+                component$cost_label,
+                component$base_cost_name
+              ),
+              call. = FALSE
+            )
+          }
+
+          if (sum(edge_match) > 1) {
+            stop(
+              sprintf(
+                "Multiple edge properties found for edge %d -> %d",
+                component$edge_from,
+                component$edge_to
+              ),
+              call. = FALSE
+            )
+          }
+
+          duration_col <- component$duration_unit
+          duration_in_units <- edge_properties[[duration_col]][edge_match]
+
+          if (is.na(duration_in_units)) {
+            stop(
+              sprintf(
+                "NA value in edge_properties$%s for edge %d -> %d",
+                duration_col,
+                component$edge_from,
+                component$edge_to
+              ),
+              call. = FALSE
+            )
+          }
         }
 
-        component_cost <- apply_discount(base_cost_value, multiplier, discount_rate, time_offset)
+        # Convert duration to years
+        years_duration <- convert_duration_to_years(
+          duration_in_units,
+          component$duration_unit
+        )
+
+        # Apply discounting if discount_rate provided
+        if (!is.null(discount_rate)) {
+          # Get time offset for this edge
+          if (!is.null(edge_properties)) {
+            edge_match <- edge_properties$from_node == component$edge_from &
+                          edge_properties$to_node == component$edge_to
+            time_offset <- edge_properties$time_offset[edge_match]
+          } else {
+            # No edge_properties, use default offset = 1
+            time_offset <- 1
+          }
+
+          component_cost <- apply_discount(
+            base_cost_value,
+            years_duration,
+            discount_rate,
+            time_offset
+          )
+        } else {
+          # No discounting
+          component_cost <- base_cost_value * years_duration
+        }
+
+      } else if (is_quantity) {
+        # QUANTITY-BASED COST
+        # ------------------
+
+        # Get quantity value
+        if (!is.na(component$quantity_value)) {
+          # Use explicit quantity value
+          quantity <- component$quantity_value
+        } else {
+          # Lookup from edge_properties$quantity
+          edge_match <- edge_properties$from_node == component$edge_from &
+                        edge_properties$to_node == component$edge_to
+
+          if (!any(edge_match)) {
+            stop(
+              sprintf(
+                "No edge property found for edge %d -> %d (cost_label: %s, base_cost: %s)",
+                component$edge_from,
+                component$edge_to,
+                component$cost_label,
+                component$base_cost_name
+              ),
+              call. = FALSE
+            )
+          }
+
+          if (sum(edge_match) > 1) {
+            stop(
+              sprintf(
+                "Multiple edge properties found for edge %d -> %d",
+                component$edge_from,
+                component$edge_to
+              ),
+              call. = FALSE
+            )
+          }
+
+          quantity <- edge_properties$quantity[edge_match]
+
+          if (is.na(quantity)) {
+            stop(
+              sprintf(
+                "NA value in edge_properties$quantity for edge %d -> %d",
+                component$edge_from,
+                component$edge_to
+              ),
+              call. = FALSE
+            )
+          }
+        }
+
+        # Simple multiplication (no discounting for quantities)
+        component_cost <- base_cost_value * quantity
+
       } else {
-        # Simple multiplication (no discounting)
-        component_cost <- base_cost_value * multiplier
+        # This should never happen due to validation in specify_cost_components
+        stop(
+          sprintf(
+            "Component has neither duration_unit nor quantity_value set (cost_label: %s, edge %d -> %d)",
+            component$cost_label,
+            component$edge_from,
+            component$edge_to
+          ),
+          call. = FALSE
+        )
       }
 
       # Add to total

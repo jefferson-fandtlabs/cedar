@@ -11,14 +11,19 @@ specify_cost_components(components)
 \describe{
   \item{cost_label}{Character. The name of the composite cost being defined}
   \item{base_cost_name}{Character. The name of the primitive cost to be multiplied}
-  \item{multiplier_type}{Character. Type of multiplier: "duration", "quantity", or "none"}
   \item{edge_from}{Integer. The source node for this cost component}
   \item{edge_to}{Integer. The destination node for this cost component}
 }
-And one optional column:
+And columns for specifying the multiplier (must have EITHER duration OR quantity):
 \describe{
-  \item{multiplier_value}{Numeric. The multiplier value. Use NA to lookup
-    from edge_properties based on multiplier_type}
+  \item{duration_unit}{Character. For duration-based costs, specifies the time
+    unit: "hours", "days", "weeks", "months", or "years". Use NA for quantity-based costs.}
+  \item{duration_value}{Numeric. For duration-based costs, the duration in the
+    units specified by duration_unit. Use NA to lookup from edge_properties
+    using duration_unit as the column name. Must be NA for quantity-based costs.}
+  \item{quantity_value}{Numeric. For quantity-based costs, the count or multiplier
+    (e.g., number of injections, surgeries). Use NA to lookup from edge_properties
+    $quantity column. Must be NA for duration-based costs.}
 }}
 }
 \value{
@@ -29,39 +34,64 @@ A validated tibble with class "cost_components" containing the cost
 Creates and validates a cost component specification data frame for use with
 \code{\link{calculate_composite_costs}}. This function structures the
 information needed to calculate composite costs from primitive cost values
-and multipliers (duration, quantity, etc.).
+and multipliers (duration or quantity).
 }
 \details{
-The \code{multiplier_type} determines how costs are calculated:
+Each cost component must specify EITHER a duration OR a quantity, never both:
+
+\strong{Duration-based costs:}
 \itemize{
-  \item \strong{"duration"}: Cost occurs over time. Use with time-based costs
-    like yearly medical costs. If discounting is enabled, will be automatically
-    applied for duration multipliers.
-  \item \strong{"quantity"}: Cost occurs multiple times. Use for countable items
-    like injections, surgeries, or doses.
-  \item \strong{"none"}: No multiplier (multiplier = 1). Use for one-time costs.
+  \item Set \code{duration_unit} to one of: "hours", "days", "weeks", "months", "years"
+  \item Set \code{duration_value} to a numeric value OR NA to lookup from edge_properties
+  \item Set \code{quantity_value} to NA
+  \item Used for time-based costs like annual medical costs, monthly medication
+  \item Automatically converted to years for discounting calculations
+  \item Discounting is applied if discount_rate is provided to calculate_composite_costs
 }
 
-When \code{multiplier_value} is NA, the function will lookup the value from
-the \code{edge_properties} parameter in \code{calculate_composite_costs()}.
-The lookup uses the \code{multiplier_type} as the column name (e.g., "duration"
-column for multiplier_type = "duration").
+\strong{Quantity-based costs:}
+\itemize{
+  \item Set \code{quantity_value} to a numeric value OR NA to lookup from edge_properties
+  \item Set \code{duration_unit} and \code{duration_value} to NA
+  \item Used for countable items like injections, surgeries, or procedures
+  \item No time conversion or discounting is applied
+  \item One-time costs use quantity_value = 1
+}
+
+When \code{duration_value} or \code{quantity_value} is NA, the value will be
+looked up from the \code{edge_properties} parameter in
+\code{calculate_composite_costs()}. For duration, the lookup uses
+\code{duration_unit} as the column name (e.g., edge_properties$months for
+duration_unit = "months"). For quantity, it uses edge_properties$quantity.
 }
 \examples{
 \dontrun{
-# Define components for a composite cost with biologic injections and yearly costs
-components <- tibble::tribble(
-  ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-  "c_biol_2_success", "c_biologic", "quantity", 1, 4, 7,
-  "c_biol_2_success", "c_biologic", "quantity", 1, 7, 10,
-  "c_biol_2_success", "c_fail_year", "duration", NA, 7, 10,  # Use duration from edge
-  "c_biol_2_success", "c_success_year", "duration", NA, 10, 19  # Use duration from edge
-)
+# Duration-based costs with edge property lookup
+components1 <- tibble::tribble(
+  ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+  "c_treatment", "c_annual", "years", NA, NA, 7, 10,
+  "c_treatment", "c_annual", "years", NA, NA, 10, 19
+) \%>\%
+  specify_cost_components()
 
-cost_spec <- specify_cost_components(components)
+# Mixed duration and quantity costs
+components2 <- tibble::tribble(
+  ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+  "c_biol_treatment", "c_injection", NA, NA, 2, 4, 7,        # 2 injections
+  "c_biol_treatment", "c_annual", "years", NA, NA, 7, 10,    # Lookup years
+  "c_biol_treatment", "c_monthly", "months", 48, NA, 10, 19  # 48 months explicit
+) \%>\%
+  specify_cost_components()
+
+# One-time cost (using quantity)
+components3 <- tibble::tribble(
+  ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+  "c_surgery", "c_surgery_base", NA, NA, 1, 3, 4
+) \%>\%
+  specify_cost_components()
 }
 
 }
 \seealso{
-\code{\link{calculate_composite_costs}}
+\code{\link{calculate_composite_costs}}, \code{\link{convert_duration_to_years}}
 }

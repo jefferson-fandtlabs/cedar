@@ -19,15 +19,18 @@ calculate_composite_costs(
 \code{base_cost_name} values in \code{cost_components}}
 
 \item{edge_properties}{A data frame with columns for edge properties. Must
-include \code{from_node} and \code{to_node} columns, plus columns matching
-the \code{multiplier_type} values used in \code{cost_components} (e.g.,
-"duration", "quantity"). Only required if \code{cost_components} uses
-NA multiplier_value entries.}
+include \code{from_node} and \code{to_node} columns. For duration-based
+costs with NA duration_value, must include columns matching the
+\code{duration_unit} values (e.g., "years", "months", "days"). For
+quantity-based costs with NA quantity_value, must include a "quantity"
+column. Only required if \code{cost_components} uses NA duration_value
+or quantity_value entries.}
 
 \item{discount_rate}{Optional numeric discount rate as a decimal (e.g., 0.03
 for 3%). If NULL (default), no discounting is applied. When provided,
-discounting is automatically applied to components with
-\code{multiplier_type = "duration"}}
+discounting is automatically applied to duration-based components (after
+converting durations to years). Quantity-based components are never
+discounted.}
 }
 \value{
 A named list of calculated composite costs, ready to be used with
@@ -35,30 +38,46 @@ A named list of calculated composite costs, ready to be used with
 }
 \description{
 Calculates composite costs from specified cost components, base costs, and
-edge properties. This function handles cost multipliers (duration, quantity),
-optional time discounting, and aggregation of multiple cost components into
-final composite cost values.
+edge properties. This function handles cost multipliers (duration in various
+time units, quantity), optional time discounting, and aggregation of multiple
+cost components into final composite cost values.
 }
 \details{
 The function processes cost components in the following steps:
 \enumerate{
+  \item If \code{edge_properties} is provided, compute cumulative time offsets for
+    each edge based on its position in the decision tree (using node 1 as the
+    root at time 0). This ensures costs are discounted correctly based on when
+    they occur in the tree's timeline.
   \item For each cost component, retrieve the base cost value from \code{base_costs}
-  \item Determine the multiplier value:
-    \itemize{
-      \item If \code{multiplier_value} is not NA, use that value
-      \item If \code{multiplier_value} is NA, lookup from \code{edge_properties}
-        using \code{multiplier_type} as the column name and matching
-        \code{edge_from} and \code{edge_to}
-      \item If \code{multiplier_type = "none"}, use multiplier = 1
+  \item Determine if component is duration-based or quantity-based:
+    \describe{
+      \item{Duration-based}{Has non-NA \code{duration_unit}. Used for time-based
+        costs like annual medical costs or monthly medication.}
+      \item{Quantity-based}{Has non-NA \code{quantity_value}. Used for countable
+        items like injections, surgeries, or one-time costs.}
     }
-  \item Apply discounting if:
+  \item For duration-based costs:
     \itemize{
-      \item \code{discount_rate} is provided (not NULL)
-      \item AND \code{multiplier_type = "duration"}
+      \item If \code{duration_value} is not NA, use that value
+      \item If \code{duration_value} is NA, lookup from \code{edge_properties}
+        using \code{duration_unit} as the column name
+      \item Convert duration to years using \code{\link{convert_duration_to_years}}
+      \item Apply discounting if \code{discount_rate} is provided (uses edge's
+        time offset)
+    }
+  \item For quantity-based costs:
+    \itemize{
+      \item If \code{quantity_value} is numeric, use that value
+      \item If \code{quantity_value} is NA, lookup from \code{edge_properties$quantity}
+      \item Simple multiplication (no time conversion or discounting)
     }
   \item Calculate component cost: \code{base_cost * multiplier * discount_factor}
   \item Sum all components for each unique \code{cost_label}
 }
+
+Time offsets can be manually overridden by including a \code{time_offset} column
+in \code{edge_properties}.
 }
 \examples{
 \dontrun{
@@ -69,20 +88,21 @@ base_costs <- list(
   c_success_year = 1000
 )
 
-# Define edge properties
+# Define edge properties with multiple time unit columns
 edge_props <- tibble::tribble(
-  ~from_node, ~to_node, ~duration,
-  7, 10, 1,
-  10, 19, 4
+  ~from_node, ~to_node, ~years, ~months, ~quantity,
+  4, 7, NA, NA, 1,
+  7, 10, 1, 12, 1,
+  10, 19, 4, 48, NA
 )
 
-# Define cost components
+# Define cost components with mixed duration and quantity
 cost_comps <- tibble::tribble(
-  ~cost_label, ~base_cost_name, ~multiplier_type, ~multiplier_value, ~edge_from, ~edge_to,
-  "c_biol_2_success", "c_biologic", "quantity", 1, 4, 7,
-  "c_biol_2_success", "c_biologic", "quantity", 1, 7, 10,
-  "c_biol_2_success", "c_fail_year", "duration", NA, 7, 10,
-  "c_biol_2_success", "c_success_year", "duration", NA, 10, 19
+  ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+  "c_biol_2_success", "c_biologic", NA, NA, 1, 4, 7,       # Quantity: 1 injection
+  "c_biol_2_success", "c_biologic", NA, NA, 1, 7, 10,      # Quantity: 1 injection
+  "c_biol_2_success", "c_fail_year", "years", NA, NA, 7, 10,    # Duration: lookup years
+  "c_biol_2_success", "c_success_year", "years", NA, NA, 10, 19  # Duration: lookup years
 ) \%>\%
   specify_cost_components()
 
@@ -101,11 +121,22 @@ costs_no_disc <- calculate_composite_costs(
   edge_props,
   discount_rate = NULL
 )
+
+# Example with multiple time units
+cost_comps_mixed <- tibble::tribble(
+  ~cost_label, ~base_cost_name, ~duration_unit, ~duration_value, ~quantity_value, ~edge_from, ~edge_to,
+  "c_treatment", "c_daily_med", "days", 30, NA, 1, 2,
+  "c_treatment", "c_monthly_visit", "months", 6, NA, 2, 3,
+  "c_treatment", "c_annual_followup", "years", 2, NA, 3, 4
+) \%>\%
+  specify_cost_components()
 }
 
 }
 \seealso{
 \code{\link{specify_cost_components}},
   \code{\link{apply_discount}},
+  \code{\link{convert_duration_to_years}},
+  \code{\link{compute_edge_offsets}},
   \code{\link{build_decision_tree_table}}
 }
