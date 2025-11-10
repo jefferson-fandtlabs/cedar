@@ -29,9 +29,12 @@
 #'   duration, quantity). Used with \code{\link{calculate_composite_costs}} for
 #'   cost calculations with multipliers.
 #'
-#' @return A data frame with columns: from_node, to_node, probability, cost,
-#'   health_outcome, plus any additional columns from edge_properties. Each row
-#'   represents a connection in the decision tree.
+#' @return A data frame with columns: from_node, to_node, probability,
+#'   probability_label, cost, cost_label, health_outcome, health_outcome_label,
+#'   plus any additional columns from edge_properties. Each row represents a
+#'   connection in the decision tree. Label columns contain the names from the
+#'   association inputs (e.g., "p1", "c1", "qaly1") and are used for
+#'   visualization.
 #'
 #' @details
 #' The function follows these rules:
@@ -233,14 +236,15 @@ build_decision_tree_table <- function(tree_structure,
       }
     }
 
-    # Map probability names to values
+    # Map probability names to values and preserve labels
     prob_assoc_df$probability <- probabilities[prob_assoc_df$name]
     prob_assoc_df$probability <- unlist(prob_assoc_df$probability)
+    prob_assoc_df$probability_label <- prob_assoc_df$name
 
     # Merge probabilities with tree structure
     tree_df <- merge(
       tree_df,
-      prob_assoc_df[, c("from_node", "to_node", "probability")],
+      prob_assoc_df[, c("from_node", "to_node", "probability", "probability_label")],
       by = c("from_node", "to_node"),
       all.x = TRUE
     )
@@ -298,6 +302,7 @@ build_decision_tree_table <- function(tree_structure,
     }
   } else {
     tree_df$probability <- NA_real_
+    tree_df$probability_label <- NA_character_
   }
 
   # Add cost associations (only for terminal nodes)
@@ -313,19 +318,21 @@ build_decision_tree_table <- function(tree_structure,
       ))
     }
 
-    # Map cost names to values
+    # Map cost names to values and preserve labels
     cost_assoc_df$cost <- costs[cost_assoc_df$name]
     cost_assoc_df$cost <- unlist(cost_assoc_df$cost)
+    cost_assoc_df$cost_label <- cost_assoc_df$name
 
     # Merge costs with tree structure
     tree_df <- merge(
       tree_df,
-      cost_assoc_df[, c("from_node", "to_node", "cost")],
+      cost_assoc_df[, c("from_node", "to_node", "cost", "cost_label")],
       by = c("from_node", "to_node"),
       all.x = TRUE
     )
   } else {
     tree_df$cost <- NA_real_
+    tree_df$cost_label <- NA_character_
   }
 
   # Add health outcome associations (only for terminal nodes)
@@ -341,19 +348,21 @@ build_decision_tree_table <- function(tree_structure,
       ))
     }
 
-    # Map outcome names to values
+    # Map outcome names to values and preserve labels
     outcome_assoc_df$health_outcome <- health_outcomes[outcome_assoc_df$name]
     outcome_assoc_df$health_outcome <- unlist(outcome_assoc_df$health_outcome)
+    outcome_assoc_df$health_outcome_label <- outcome_assoc_df$name
 
     # Merge outcomes with tree structure
     tree_df <- merge(
       tree_df,
-      outcome_assoc_df[, c("from_node", "to_node", "health_outcome")],
+      outcome_assoc_df[, c("from_node", "to_node", "health_outcome", "health_outcome_label")],
       by = c("from_node", "to_node"),
       all.x = TRUE
     )
   } else {
     tree_df$health_outcome <- NA_real_
+    tree_df$health_outcome_label <- NA_character_
   }
 
   # Add edge properties if provided

@@ -47,9 +47,12 @@ duration, quantity). Used with \code{\link{calculate_composite_costs}} for
 cost calculations with multipliers.}
 }
 \value{
-A data frame with columns: from_node, to_node, probability, cost,
-  health_outcome, plus any additional columns from edge_properties. Each row
-  represents a connection in the decision tree.
+A data frame with columns: from_node, to_node, probability,
+  probability_label, cost, cost_label, health_outcome, health_outcome_label,
+  plus any additional columns from edge_properties. Each row represents a
+  connection in the decision tree. Label columns contain the names from the
+  association inputs (e.g., "p1", "c1", "qaly1") and are used for
+  visualization.
 }
 \description{
 Converts a tree structure representation into a tabular format for decision tree

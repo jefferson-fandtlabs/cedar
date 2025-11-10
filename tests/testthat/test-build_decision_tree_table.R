@@ -42,7 +42,8 @@ test_that("build_decision_tree_table creates correct table structure", {
 
   # Check structure
   expect_s3_class(result, "data.frame")
-  expect_named(result, c("from_node", "to_node", "probability", "cost", "health_outcome"))
+  expect_named(result, c("from_node", "to_node", "probability", "probability_label",
+                         "cost", "cost_label", "health_outcome", "health_outcome_label"))
 
   # Check number of rows (should have 6 connections)
   expect_equal(nrow(result), 6)
@@ -779,7 +780,8 @@ test_that("build_decision_tree_table works without edge_properties", {
   )
 
   expect_false("duration" %in% names(result))
-  expect_named(result, c("from_node", "to_node", "probability", "cost", "health_outcome"))
+  expect_named(result, c("from_node", "to_node", "probability", "probability_label",
+                         "cost", "cost_label", "health_outcome", "health_outcome_label"))
 })
 
 
@@ -919,4 +921,205 @@ test_that("build_decision_tree_table handles multiple edge property columns", {
   expect_equal(result$duration[result$to_node == 2], 1)
   expect_equal(result$quantity[result$to_node == 2], 10)
   expect_equal(result$custom_prop[result$to_node == 2], "A")
+})
+
+
+# Label Preservation Tests =====================================================
+
+test_that("build_decision_tree_table preserves probability labels", {
+  tree <- list(
+    "1" = c(2, 3),
+    "2" = c(4, 5)
+  )
+
+  costs <- list()
+  probs <- list("p1" = 0.6, "p2" = 0.4)
+  outcomes <- list()
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  # Check that probability labels are present
+  expect_true("probability_label" %in% names(result))
+
+  # Check that labels match the associations
+  expect_equal(result$probability_label[result$from_node == 2 & result$to_node == 4], "p1")
+  expect_equal(result$probability_label[result$from_node == 2 & result$to_node == 5], "p2")
+
+  # Node 1 connections should have NA labels
+  expect_true(is.na(result$probability_label[result$from_node == 1 & result$to_node == 2]))
+  expect_true(is.na(result$probability_label[result$from_node == 1 & result$to_node == 3]))
+})
+
+
+test_that("build_decision_tree_table preserves cost labels", {
+  tree <- list(
+    "1" = c(2, 3),
+    "2" = c(4, 5)
+  )
+
+  costs <- list("c1" = 1000, "c2" = 1500)
+  probs <- list("p1" = 0.6, "p2" = 0.4)
+  outcomes <- list()
+
+  cost_assoc <- data.frame(
+    name = c("c1", "c2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  # Check that cost labels are present
+  expect_true("cost_label" %in% names(result))
+
+  # Check that labels match the associations
+  expect_equal(result$cost_label[result$from_node == 2 & result$to_node == 4], "c1")
+  expect_equal(result$cost_label[result$from_node == 2 & result$to_node == 5], "c2")
+
+  # Non-terminal nodes should have NA cost labels
+  expect_true(is.na(result$cost_label[result$from_node == 1 & result$to_node == 2]))
+  expect_true(is.na(result$cost_label[result$from_node == 1 & result$to_node == 3]))
+})
+
+
+test_that("build_decision_tree_table preserves health outcome labels", {
+  tree <- list(
+    "1" = c(2, 3),
+    "2" = c(4, 5)
+  )
+
+  costs <- list()
+  probs <- list("p1" = 0.6, "p2" = 0.4)
+  outcomes <- list("qaly1" = 0.8, "qaly2" = 0.6)
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  outcome_assoc <- data.frame(
+    name = c("qaly1", "qaly2"),
+    from_node = c(2, 2),
+    to_node = c(4, 5)
+  )
+
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  # Check that health outcome labels are present
+  expect_true("health_outcome_label" %in% names(result))
+
+  # Check that labels match the associations
+  expect_equal(result$health_outcome_label[result$from_node == 2 & result$to_node == 4], "qaly1")
+  expect_equal(result$health_outcome_label[result$from_node == 2 & result$to_node == 5], "qaly2")
+
+  # Non-terminal nodes should have NA health outcome labels
+  expect_true(is.na(result$health_outcome_label[result$from_node == 1 & result$to_node == 2]))
+  expect_true(is.na(result$health_outcome_label[result$from_node == 1 & result$to_node == 3]))
+})
+
+
+test_that("build_decision_tree_table preserves all labels together", {
+  tree <- list(
+    "1" = c(2, 3),
+    "2" = c(4, 5),
+    "3" = c(6, 7)
+  )
+
+  costs <- list("c1" = 1000, "c2" = 1500, "c3" = 2000, "c4" = 2500)
+  probs <- list("p1" = 0.6, "p2" = 0.4, "p3" = 0.7, "p4" = 0.3)
+  outcomes <- list("qaly1" = 0.8, "qaly2" = 0.6, "qaly3" = 0.9, "qaly4" = 0.7)
+
+  cost_assoc <- data.frame(
+    name = c("c1", "c2", "c3", "c4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2", "p3", "p4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  outcome_assoc <- data.frame(
+    name = c("qaly1", "qaly2", "qaly3", "qaly4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  # Verify all label columns exist
+  expect_true(all(c("probability_label", "cost_label", "health_outcome_label") %in% names(result)))
+
+  # Verify labels for node 2->4 connection
+  node2_4 <- result[result$from_node == 2 & result$to_node == 4, ]
+  expect_equal(node2_4$probability_label, "p1")
+  expect_equal(node2_4$cost_label, "c1")
+  expect_equal(node2_4$health_outcome_label, "qaly1")
+
+  # Verify labels for node 3->7 connection
+  node3_7 <- result[result$from_node == 3 & result$to_node == 7, ]
+  expect_equal(node3_7$probability_label, "p4")
+  expect_equal(node3_7$cost_label, "c4")
+  expect_equal(node3_7$health_outcome_label, "qaly4")
+})
+
+
+test_that("build_decision_tree_table handles empty associations with label columns", {
+  tree <- list("1" = c(2, 3))
+
+  costs <- list()
+  probs <- list()
+  outcomes <- list()
+
+  cost_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  prob_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+  outcome_assoc <- data.frame(name = character(), from_node = integer(), to_node = integer())
+
+  result <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  # Verify label columns exist even with empty associations
+  expect_true(all(c("probability_label", "cost_label", "health_outcome_label") %in% names(result)))
+
+  # All label columns should be NA
+  expect_true(all(is.na(result$probability_label)))
+  expect_true(all(is.na(result$cost_label)))
+  expect_true(all(is.na(result$health_outcome_label)))
 })
