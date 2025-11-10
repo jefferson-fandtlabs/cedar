@@ -245,6 +245,18 @@ plot_decision_tree <- function(tree_table,
     label_size <- 3
   }
 
+  # Calculate label offsets based on node spacing and complexity
+  # For complex trees with tight spacing, use smaller offsets
+  # For simple trees, use larger offsets
+  label_offset_vertical <- node_spacing * 0.15  # For edge labels
+  label_offset_vertical <- max(0.15, min(0.4, label_offset_vertical))
+
+  node_label_offset <- node_spacing * 0.2  # For node labels (below nodes)
+  node_label_offset <- max(0.3, min(0.5, node_label_offset))
+
+  node_label_spacing <- node_spacing * 0.15  # Spacing between stacked node labels
+  node_label_spacing <- max(0.25, min(0.35, node_label_spacing))
+
   # Calculate node positions using selected algorithm
   if (layout_algorithm == "walker") {
     node_positions <- calculate_node_positions_walker(tree_table, node_depths, node_spacing)
@@ -328,8 +340,10 @@ plot_decision_tree <- function(tree_table,
     for (i in 1:nrow(terminal_costs)) {
       node_idx <- which(node_df$node == terminal_costs$to_node[i])
       if (length(node_idx) > 0) {
+        # Round cost to 2 decimal places
+        cost_rounded <- round(as.numeric(terminal_costs$cost[i]), 2)
         node_df$cost_label_text[node_idx] <- paste0(
-          terminal_costs$cost_label[i], " = ", terminal_costs$cost[i]
+          terminal_costs$cost_label[i], " = ", cost_rounded
         )
       }
     }
@@ -341,8 +355,10 @@ plot_decision_tree <- function(tree_table,
     for (i in 1:nrow(terminal_outcomes)) {
       node_idx <- which(node_df$node == terminal_outcomes$to_node[i])
       if (length(node_idx) > 0) {
+        # Round health outcome to 2 decimal places
+        outcome_rounded <- round(as.numeric(terminal_outcomes$health_outcome[i]), 2)
         node_df$health_outcome_label_text[node_idx] <- paste0(
-          terminal_outcomes$health_outcome_label[i], " = ", terminal_outcomes$health_outcome[i]
+          terminal_outcomes$health_outcome_label[i], " = ", outcome_rounded
         )
       }
     }
@@ -375,9 +391,15 @@ plot_decision_tree <- function(tree_table,
   if (show_probabilities) {
     prob_labels_df <- edge_df[!is.na(edge_df$prob_label), ]
     if (nrow(prob_labels_df) > 0) {
+      # For edges to terminal nodes, move labels further left to avoid overlap
+      prob_labels_df$x_label <- ifelse(
+        prob_labels_df$to_node %in% terminal_nodes,
+        prob_labels_df$x_mid - 1.5,  # Move labels left for terminal edges
+        prob_labels_df$x_mid
+      )
       p <- p + ggplot2::geom_text(
         data = prob_labels_df,
-        ggplot2::aes(x = x_mid, y = y_mid + 0.15, label = prob_label),
+        ggplot2::aes(x = x_label, y = y_mid + label_offset_vertical, label = prob_label),
         size = label_size,
         color = "black"
       )
@@ -388,9 +410,15 @@ plot_decision_tree <- function(tree_table,
   if (show_time) {
     time_labels_df <- edge_df[!is.na(edge_df$time_label), ]
     if (nrow(time_labels_df) > 0) {
+      # For edges to terminal nodes, move labels further left to avoid overlap
+      time_labels_df$x_label <- ifelse(
+        time_labels_df$to_node %in% terminal_nodes,
+        time_labels_df$x_mid - 1.5,  # Move labels left for terminal edges
+        time_labels_df$x_mid
+      )
       p <- p + ggplot2::geom_text(
         data = time_labels_df,
-        ggplot2::aes(x = x_mid, y = y_mid - 0.15, label = time_label),
+        ggplot2::aes(x = x_label, y = y_mid - label_offset_vertical, label = time_label),
         size = label_size,
         color = "black"
       )
@@ -455,7 +483,7 @@ plot_decision_tree <- function(tree_table,
     if (nrow(custom_names_df) > 0) {
       p <- p + ggplot2::geom_text(
         data = custom_names_df,
-        ggplot2::aes(x = x, y = y - 0.4, label = custom_name),
+        ggplot2::aes(x = x, y = y - node_label_offset, label = custom_name),
         size = label_size,
         color = "black"
       )
@@ -466,11 +494,14 @@ plot_decision_tree <- function(tree_table,
   if (show_costs) {
     cost_labels_df <- node_df[!is.na(node_df$cost_label_text), ]
     if (nrow(cost_labels_df) > 0) {
+      # For terminal nodes, use larger offset to prevent overlap with the node
+      terminal_offset <- node_label_offset * 2.5
+
       # Adjust y position based on whether custom names are present
       cost_labels_df$y_pos <- ifelse(
         !is.na(cost_labels_df$custom_name),
-        cost_labels_df$y - 0.7,
-        cost_labels_df$y - 0.4
+        cost_labels_df$y - terminal_offset - node_label_spacing,
+        cost_labels_df$y - terminal_offset
       )
       p <- p + ggplot2::geom_text(
         data = cost_labels_df,
@@ -485,19 +516,22 @@ plot_decision_tree <- function(tree_table,
   if (show_health_outcomes) {
     outcome_labels_df <- node_df[!is.na(node_df$health_outcome_label_text), ]
     if (nrow(outcome_labels_df) > 0) {
+      # For terminal nodes, use larger offset to prevent overlap with the node
+      terminal_offset <- node_label_offset * 2.5
+
       # Adjust y position based on what's above
-      outcome_labels_df$y_pos <- outcome_labels_df$y - 0.4
+      outcome_labels_df$y_pos <- outcome_labels_df$y - terminal_offset
       if (!is.null(node_names)) {
         outcome_labels_df$y_pos <- ifelse(
           !is.na(outcome_labels_df$custom_name),
-          outcome_labels_df$y_pos - 0.3,
+          outcome_labels_df$y_pos - node_label_spacing,
           outcome_labels_df$y_pos
         )
       }
       if (show_costs) {
         outcome_labels_df$y_pos <- ifelse(
           !is.na(outcome_labels_df$cost_label_text),
-          outcome_labels_df$y_pos - 0.3,
+          outcome_labels_df$y_pos - node_label_spacing,
           outcome_labels_df$y_pos
         )
       }
@@ -510,8 +544,11 @@ plot_decision_tree <- function(tree_table,
     }
   }
 
-  # Apply theme
-  p <- p + ggplot2::theme_void()
+  # Apply theme with expanded margins to prevent label cutoff
+  p <- p + ggplot2::theme_void() +
+    ggplot2::theme(
+      plot.margin = ggplot2::margin(20, 40, 20, 20)  # top, right, bottom, left
+    )
   p <- p + ggplot2::coord_fixed()
 
   return(p)
@@ -581,17 +618,22 @@ calculate_tree_metrics <- function(tree_table, node_depths) {
 
 # Helper function to calculate optimal spacing based on tree complexity
 calculate_optimal_spacing <- function(tree_metrics) {
-  # Base spacing
-  base_spacing <- 2.0
+  # Base spacing - increased for better separation
+  base_spacing <- 3.5
 
-  # Adjust based on tree width (more nodes = tighter spacing)
-  if (tree_metrics$max_width > 10) {
-    width_factor <- 10 / tree_metrics$max_width
+  # For complex trees, we need MORE spacing, not less
+  # The issue is vertical overlap, so we increase spacing for wider trees
+  if (tree_metrics$max_width > 3) {
+    # Increase spacing proportionally to width
+    width_factor <- tree_metrics$max_width / 3
     base_spacing <- base_spacing * width_factor
   }
 
+  # For very wide trees, don't cap - let it grow as needed
+  # Remove the cap that was limiting spacing to 4.0
+
   # Minimum spacing to maintain readability
-  min_spacing <- 0.8
+  min_spacing <- 2.5
 
   return(max(base_spacing, min_spacing))
 }
@@ -633,98 +675,79 @@ calculate_optimal_node_size <- function(tree_metrics) {
 }
 
 
-# Helper function to calculate node x,y positions using Walker's algorithm
+# Helper function to calculate node x,y positions using right-to-left approach
 calculate_node_positions_walker <- function(tree_table, node_depths, node_spacing) {
   all_nodes <- as.integer(names(node_depths))
   max_depth <- max(node_depths, na.rm = TRUE)
 
-  # Initialize positions
-  positions <- data.frame(
-    node = all_nodes,
-    x = node_depths * 3,  # Horizontal spacing based on depth
-    y = rep(0, length(all_nodes)),
-    stringsAsFactors = FALSE
-  )
-
-  # Build adjacency list for children
+  # Build adjacency lists for children and parents
   children_list <- lapply(all_nodes, function(node) {
     tree_table$to_node[tree_table$from_node == node]
   })
   names(children_list) <- all_nodes
 
-  # Walker's algorithm: bottom-up pass to calculate relative positions
-  # Start from deepest level and work up
-  for (depth in max_depth:0) {
-    nodes_at_depth <- all_nodes[node_depths == depth]
+  parent_list <- lapply(all_nodes, function(node) {
+    parent <- tree_table$from_node[tree_table$to_node == node]
+    if (length(parent) == 0) return(NA_integer_)
+    return(parent[1])
+  })
+  names(parent_list) <- all_nodes
 
-    for (node in nodes_at_depth) {
-      children <- children_list[[as.character(node)]]
+  # Identify terminal nodes (nodes with no children)
+  terminal_nodes <- all_nodes[sapply(all_nodes, function(n) {
+    length(children_list[[as.character(n)]]) == 0
+  })]
 
-      if (length(children) == 0) {
-        # Terminal node - position will be set in final pass
-        next
-      } else if (length(children) == 1) {
-        # Single child - center parent over child
-        child_idx <- which(positions$node == children[1])
-        node_idx <- which(positions$node == node)
-        positions$y[node_idx] <- positions$y[child_idx]
-      } else {
-        # Multiple children - center parent over children
-        child_indices <- which(positions$node %in% children)
-        child_y_positions <- positions$y[child_indices]
-        node_idx <- which(positions$node == node)
-        positions$y[node_idx] <- mean(child_y_positions)
-      }
-    }
+  # Step 1: Calculate row spacing based on number of terminal nodes
+  num_rows <- length(terminal_nodes)
+  if (num_rows > 1) {
+    # Total vertical space divided by (num_rows - 1) gaps
+    row_spacing <- node_spacing
+    total_height <- (num_rows - 1) * row_spacing
+  } else {
+    row_spacing <- node_spacing
+    total_height <- 0
   }
 
-  # Second pass: distribute terminal nodes to avoid overlap
-  for (depth in 0:max_depth) {
-    nodes_at_depth <- all_nodes[node_depths == depth]
+  # Step 2: Initialize positions
+  # Increase horizontal spacing to accommodate labels (was 3, now 8)
+  horizontal_spacing <- 8
+  positions <- data.frame(
+    node = all_nodes,
+    x = ifelse(all_nodes %in% terminal_nodes, max_depth * horizontal_spacing, node_depths * horizontal_spacing),
+    y = rep(NA_real_, length(all_nodes)),
+    stringsAsFactors = FALSE
+  )
 
-    # Separate terminal and non-terminal nodes
-    terminal_at_depth <- nodes_at_depth[sapply(nodes_at_depth, function(n) {
-      length(children_list[[as.character(n)]]) == 0
-    })]
-
-    if (length(terminal_at_depth) > 1) {
-      # Sort by current y position
-      terminal_indices <- which(positions$node %in% terminal_at_depth)
-      terminal_y <- positions$y[terminal_indices]
-      order_idx <- order(terminal_y)
-
-      # Redistribute with proper spacing
-      new_y <- seq(
-        from = -(length(terminal_at_depth) - 1) * node_spacing / 2,
-        to = (length(terminal_at_depth) - 1) * node_spacing / 2,
-        length.out = length(terminal_at_depth)
-      )
-
-      positions$y[terminal_indices[order_idx]] <- new_y
-    } else if (length(terminal_at_depth) == 1) {
-      # Single terminal node - keep it centered if it's the only node at this depth
-      if (length(nodes_at_depth) == 1) {
-        terminal_idx <- which(positions$node == terminal_at_depth)
-        positions$y[terminal_idx] <- 0
-      }
-    }
+  # Step 3: Position terminal nodes evenly in rows (sorted by node number)
+  sorted_terminal_nodes <- sort(terminal_nodes)
+  for (i in seq_along(sorted_terminal_nodes)) {
+    terminal_node <- sorted_terminal_nodes[i]
+    terminal_idx <- which(positions$node == terminal_node)
+    # Position from top to bottom: start high, go low
+    positions$y[terminal_idx] <- (total_height / 2) - (i - 1) * row_spacing
   }
 
-  # Third pass: adjust parents to minimize edge crossings and center over children
+  # Step 4: Work RIGHT TO LEFT, centering parents with their first child
+  # Process from deepest level back to root
   for (depth in (max_depth - 1):0) {
     nodes_at_depth <- all_nodes[node_depths == depth]
 
-    for (node in nodes_at_depth) {
-      children <- children_list[[as.character(node)]]
+    for (parent_node in nodes_at_depth) {
+      # Get children of this parent (sorted by node number)
+      children <- children_list[[as.character(parent_node)]]
+      if (length(children) == 0) next
 
-      if (length(children) > 0) {
-        child_indices <- which(positions$node %in% children)
-        child_y_positions <- positions$y[child_indices]
-        node_idx <- which(positions$node == node)
+      children <- sort(children)
 
-        # Center parent over children
-        positions$y[node_idx] <- mean(child_y_positions)
-      }
+      # Get the first child's y position
+      first_child <- children[1]
+      first_child_idx <- which(positions$node == first_child)
+      first_child_y <- positions$y[first_child_idx]
+
+      # Center parent with first child
+      parent_idx <- which(positions$node == parent_node)
+      positions$y[parent_idx] <- first_child_y
     }
   }
 
