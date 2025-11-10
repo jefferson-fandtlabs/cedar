@@ -12,7 +12,7 @@ You can install the development version of cedar from GitHub:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("username/cedar")
+devtools::install_github("jefferson-fandtlabs/cedar")
 ```
 
 ## Features
