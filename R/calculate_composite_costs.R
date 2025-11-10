@@ -23,6 +23,10 @@
 #' @details
 #' The function processes cost components in the following steps:
 #' \enumerate{
+#'   \item If \code{edge_properties} is provided, compute cumulative time offsets for
+#'     each edge based on its position in the decision tree (using node 1 as the
+#'     root at time 0). This ensures costs are discounted correctly based on when
+#'     they occur in the tree's timeline.
 #'   \item For each cost component, retrieve the base cost value from \code{base_costs}
 #'   \item Determine the multiplier value:
 #'     \itemize{
@@ -36,10 +40,15 @@
 #'     \itemize{
 #'       \item \code{discount_rate} is provided (not NULL)
 #'       \item AND \code{multiplier_type = "duration"}
+#'       \item Discounting uses the edge's time offset to ensure costs are discounted
+#'         based on their cumulative time from the root node
 #'     }
 #'   \item Calculate component cost: \code{base_cost * multiplier * discount_factor}
 #'   \item Sum all components for each unique \code{cost_label}
 #' }
+#'
+#' Time offsets can be manually overridden by including a \code{time_offset} column
+#' in \code{edge_properties}.
 #'
 #' @return A named list of calculated composite costs, ready to be used with
 #'   \code{\link{build_decision_tree_table}}
@@ -90,6 +99,7 @@
 #' @seealso
 #'   \code{\link{specify_cost_components}},
 #'   \code{\link{apply_discount}},
+#'   \code{\link{compute_edge_offsets}},
 #'   \code{\link{build_decision_tree_table}}
 #'
 #' @export
@@ -170,6 +180,12 @@ calculate_composite_costs <- function(cost_components,
     }
   }
 
+  # Compute time offsets for edges if edge_properties is provided
+  # This ensures correct sequential discounting along paths in the decision tree
+  if (!is.null(edge_properties)) {
+    edge_properties <- compute_edge_offsets(edge_properties)
+  }
+
   # Initialize results list
   composite_costs <- list()
 
@@ -244,8 +260,19 @@ calculate_composite_costs <- function(cost_components,
 
       # Calculate component cost
       if (component$multiplier_type == "duration" && !is.null(discount_rate)) {
-        # Apply discounting for duration-based costs
-        component_cost <- apply_discount(base_cost_value, multiplier, discount_rate)
+        # Apply discounting for duration-based costs with time offset
+        # Determine time offset for this edge
+        if (!is.null(edge_properties)) {
+          # Look up the time offset for this specific edge
+          edge_match <- edge_properties$from_node == component$edge_from &
+                        edge_properties$to_node == component$edge_to
+          time_offset <- edge_properties$time_offset[edge_match]
+        } else {
+          # No edge_properties provided, use default offset=1 (old behavior)
+          time_offset <- 1
+        }
+
+        component_cost <- apply_discount(base_cost_value, multiplier, discount_rate, time_offset)
       } else {
         # Simple multiplication (no discounting)
         component_cost <- base_cost_value * multiplier

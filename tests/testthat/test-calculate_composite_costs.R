@@ -203,8 +203,8 @@ test_that("calculate_composite_costs applies discounting for duration multiplier
     discount_rate = 0.03
   )
 
-  # Should use apply_discount
-  expected <- apply_discount(5000, 3, 0.03)
+  # Should use apply_discount with offset=1 (old behavior - will be updated when offsets are computed)
+  expected <- apply_discount(5000, 3, 0.03, 1)
   expect_equal(result_with_discount$c_comp, expected, tolerance = 0.001)
 
   # Without discount
@@ -315,15 +315,19 @@ test_that("calculate_composite_costs reproduces c_biol_2_success example", {
     discount_rate
   )
 
-  # Manual calculation:
-  # - c_biologic * 1 (quantity, no discount) = 30000
-  # - c_biologic * 1 (quantity, no discount) = 30000
-  # - c_fail_year over 1 year with discount = apply_discount(5000, 1, 0.03)
-  # - c_success_year over 4 years with discount = apply_discount(1000, 4, 0.03)
+  # Manual calculation with computed offsets:
+  # Edge 4->7: orphaned, gets offset=0, duration=1 -> node 7 time = 0+1 = 1
+  # Edge 7->10: offset=1 (time at node 7), duration=1 -> node 10 time = 1+1 = 2
+  # Edge 10->19: offset=2 (time at node 10), duration=4
+  #
+  # - c_biologic * 1 (4->7, quantity, no discount) = 30000
+  # - c_biologic * 1 (7->10, quantity, no discount) = 30000
+  # - c_fail_year over 1 year (7->10, duration, offset=1) = apply_discount(5000, 1, 0.03, 1)
+  # - c_success_year over 4 years (10->19, duration, offset=2) = apply_discount(1000, 4, 0.03, 2)
 
   expected <- 30000 + 30000 +
-              apply_discount(5000, 1, 0.03) +
-              apply_discount(1000, 4, 0.03)
+              apply_discount(5000, 1, 0.03, 1) +
+              apply_discount(1000, 4, 0.03, 2)
 
   expect_equal(result$c_biol_2_success, expected, tolerance = 0.01)
 })
@@ -425,8 +429,11 @@ test_that("calculate_composite_costs handles mixed specified and lookup multipli
     discount_rate = 0.03
   )
 
-  # 30000 * 2 (quantity, no discount) + apply_discount(1000, 4, 0.03)
-  expected <- 60000 + apply_discount(1000, 4, 0.03)
+  # With computed offsets:
+  # Edge 7->10: orphaned (node 7 not in edge list as to_node), gets offset=0
+  # - c_base1 * 2 (quantity, no discount) = 60000
+  # - c_base2 over 4 years (7->10, duration, offset=0) = apply_discount(1000, 4, 0.03, 0)
+  expected <- 60000 + apply_discount(1000, 4, 0.03, 0)
 
   expect_equal(result$c_comp, expected, tolerance = 0.01)
 })
