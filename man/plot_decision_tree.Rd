@@ -11,7 +11,10 @@ plot_decision_tree(
   show_time = TRUE,
   show_costs = TRUE,
   show_health_outcomes = TRUE,
-  node_spacing = 2
+  node_spacing = 2,
+  auto_spacing = TRUE,
+  auto_sizing = TRUE,
+  layout_algorithm = "walker"
 )
 }
 \arguments{
@@ -38,7 +41,19 @@ nodes. Default is TRUE.}
 below terminal nodes (and below costs if present). Default is TRUE.}
 
 \item{node_spacing}{Numeric. Controls vertical spacing between nodes at the
-same level. Default is 2.}
+same level. Default is 2. If auto_spacing is TRUE, this value is ignored
+and spacing is calculated automatically based on tree complexity.}
+
+\item{auto_spacing}{Logical. If TRUE, automatically calculates optimal node
+spacing based on tree complexity. Default is TRUE.}
+
+\item{auto_sizing}{Logical. If TRUE, automatically adjusts text and node
+sizes based on tree complexity for better readability. Default is TRUE.}
+
+\item{layout_algorithm}{Character. Layout algorithm to use: "walker" (default)
+for Walker's algorithm with parent centering, or "simple" for uniform
+distribution. Walker's algorithm generally produces better layouts for
+complex trees.}
 }
 \value{
 A ggplot2 object representing the decision tree visualization. The

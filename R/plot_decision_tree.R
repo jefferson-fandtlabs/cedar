@@ -24,7 +24,16 @@
 #' @param show_health_outcomes Logical. If TRUE, displays health outcome labels
 #'   below terminal nodes (and below costs if present). Default is TRUE.
 #' @param node_spacing Numeric. Controls vertical spacing between nodes at the
-#'   same level. Default is 2.
+#'   same level. Default is 2. If auto_spacing is TRUE, this value is ignored
+#'   and spacing is calculated automatically based on tree complexity.
+#' @param auto_spacing Logical. If TRUE, automatically calculates optimal node
+#'   spacing based on tree complexity. Default is TRUE.
+#' @param auto_sizing Logical. If TRUE, automatically adjusts text and node
+#'   sizes based on tree complexity for better readability. Default is TRUE.
+#' @param layout_algorithm Character. Layout algorithm to use: "walker" (default)
+#'   for Walker's algorithm with parent centering, or "simple" for uniform
+#'   distribution. Walker's algorithm generally produces better layouts for
+#'   complex trees.
 #'
 #' @return A ggplot2 object representing the decision tree visualization. The
 #'   plot can be displayed, saved, or further customized using ggplot2 functions.
@@ -141,7 +150,10 @@ plot_decision_tree <- function(tree_table,
                                 show_time = TRUE,
                                 show_costs = TRUE,
                                 show_health_outcomes = TRUE,
-                                node_spacing = 2) {
+                                node_spacing = 2,
+                                auto_spacing = TRUE,
+                                auto_sizing = TRUE,
+                                layout_algorithm = "walker") {
 
   # Check if ggplot2 is available
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
@@ -192,6 +204,18 @@ plot_decision_tree <- function(tree_table,
     stop("node_spacing must be a positive number", call. = FALSE)
   }
 
+  if (!is.logical(auto_spacing)) {
+    stop("auto_spacing must be TRUE or FALSE", call. = FALSE)
+  }
+
+  if (!is.logical(auto_sizing)) {
+    stop("auto_sizing must be TRUE or FALSE", call. = FALSE)
+  }
+
+  if (!layout_algorithm %in% c("walker", "simple")) {
+    stop("layout_algorithm must be 'walker' or 'simple'", call. = FALSE)
+  }
+
   # Classify nodes
   all_nodes <- unique(c(tree_table$from_node, tree_table$to_node))
   parent_nodes <- unique(tree_table$from_node)
@@ -202,8 +226,31 @@ plot_decision_tree <- function(tree_table,
   # Calculate node depths (distance from node 1)
   node_depths <- calculate_node_depths(tree_table, all_nodes)
 
-  # Calculate node positions
-  node_positions <- calculate_node_positions(tree_table, node_depths, node_spacing)
+  # Calculate tree metrics for adaptive layout
+  tree_metrics <- calculate_tree_metrics(tree_table, node_depths)
+
+  # Determine optimal spacing
+  if (auto_spacing) {
+    node_spacing <- calculate_optimal_spacing(tree_metrics)
+  }
+
+  # Determine optimal sizes
+  if (auto_sizing) {
+    text_size <- calculate_optimal_text_size(tree_metrics)
+    node_size <- calculate_optimal_node_size(tree_metrics)
+    label_size <- text_size * 0.85  # Labels slightly smaller than node text
+  } else {
+    text_size <- 4
+    node_size <- 8
+    label_size <- 3
+  }
+
+  # Calculate node positions using selected algorithm
+  if (layout_algorithm == "walker") {
+    node_positions <- calculate_node_positions_walker(tree_table, node_depths, node_spacing)
+  } else {
+    node_positions <- calculate_node_positions(tree_table, node_depths, node_spacing)
+  }
 
   # Create node data frame for plotting
   node_df <- data.frame(
@@ -331,7 +378,7 @@ plot_decision_tree <- function(tree_table,
       p <- p + ggplot2::geom_text(
         data = prob_labels_df,
         ggplot2::aes(x = x_mid, y = y_mid + 0.15, label = prob_label),
-        size = 3,
+        size = label_size,
         color = "black"
       )
     }
@@ -344,7 +391,7 @@ plot_decision_tree <- function(tree_table,
       p <- p + ggplot2::geom_text(
         data = time_labels_df,
         ggplot2::aes(x = x_mid, y = y_mid - 0.15, label = time_label),
-        size = 3,
+        size = label_size,
         color = "black"
       )
     }
@@ -358,7 +405,7 @@ plot_decision_tree <- function(tree_table,
       data = decision_nodes,
       ggplot2::aes(x = x, y = y),
       shape = 21,  # Circle
-      size = 8,
+      size = node_size,
       fill = "green",
       color = "black",
       stroke = 1
@@ -372,7 +419,7 @@ plot_decision_tree <- function(tree_table,
       data = chance_nodes_df,
       ggplot2::aes(x = x, y = y),
       shape = 22,  # Square
-      size = 8,
+      size = node_size,
       fill = "yellow",
       color = "black",
       stroke = 1
@@ -386,7 +433,7 @@ plot_decision_tree <- function(tree_table,
       data = terminal_nodes_df,
       ggplot2::aes(x = x, y = y),
       shape = 25,  # Downward triangle (rotated -90 from upward)
-      size = 8,
+      size = node_size,
       fill = "red",
       color = "black",
       stroke = 1
@@ -397,7 +444,7 @@ plot_decision_tree <- function(tree_table,
   p <- p + ggplot2::geom_text(
     data = node_df,
     ggplot2::aes(x = x, y = y, label = node),
-    size = 4,
+    size = text_size,
     color = "black",
     fontface = "bold"
   )
@@ -409,7 +456,7 @@ plot_decision_tree <- function(tree_table,
       p <- p + ggplot2::geom_text(
         data = custom_names_df,
         ggplot2::aes(x = x, y = y - 0.4, label = custom_name),
-        size = 3,
+        size = label_size,
         color = "black"
       )
     }
@@ -428,7 +475,7 @@ plot_decision_tree <- function(tree_table,
       p <- p + ggplot2::geom_text(
         data = cost_labels_df,
         ggplot2::aes(x = x, y = y_pos, label = cost_label_text),
-        size = 3,
+        size = label_size,
         color = "black"
       )
     }
@@ -457,7 +504,7 @@ plot_decision_tree <- function(tree_table,
       p <- p + ggplot2::geom_text(
         data = outcome_labels_df,
         ggplot2::aes(x = x, y = y_pos, label = health_outcome_label_text),
-        size = 3,
+        size = label_size,
         color = "black"
       )
     }
@@ -500,7 +547,192 @@ calculate_node_depths <- function(tree_table, all_nodes) {
 }
 
 
-# Helper function to calculate node x,y positions
+# Helper function to calculate tree metrics for adaptive layout
+calculate_tree_metrics <- function(tree_table, node_depths) {
+  all_nodes <- as.integer(names(node_depths))
+  max_depth <- max(node_depths, na.rm = TRUE)
+
+  # Count nodes per level
+  nodes_per_level <- table(node_depths)
+
+  # Calculate maximum children per node
+  children_counts <- table(tree_table$from_node)
+  max_children <- if (length(children_counts) > 0) max(children_counts) else 0
+
+  # Calculate total nodes
+  total_nodes <- length(all_nodes)
+
+  # Calculate average branching factor
+  avg_branching <- if (length(children_counts) > 0) mean(children_counts) else 0
+
+  # Calculate tree width (maximum nodes at any level)
+  max_width <- max(nodes_per_level)
+
+  return(list(
+    max_depth = max_depth,
+    nodes_per_level = as.vector(nodes_per_level),
+    max_children = as.integer(max_children),
+    total_nodes = total_nodes,
+    avg_branching = avg_branching,
+    max_width = as.integer(max_width)
+  ))
+}
+
+
+# Helper function to calculate optimal spacing based on tree complexity
+calculate_optimal_spacing <- function(tree_metrics) {
+  # Base spacing
+  base_spacing <- 2.0
+
+  # Adjust based on tree width (more nodes = tighter spacing)
+  if (tree_metrics$max_width > 10) {
+    width_factor <- 10 / tree_metrics$max_width
+    base_spacing <- base_spacing * width_factor
+  }
+
+  # Minimum spacing to maintain readability
+  min_spacing <- 0.8
+
+  return(max(base_spacing, min_spacing))
+}
+
+
+# Helper function to calculate optimal text size based on tree complexity
+calculate_optimal_text_size <- function(tree_metrics) {
+  # Base text size
+  base_size <- 3.5
+
+  # Reduce size for complex trees
+  if (tree_metrics$total_nodes > 15) {
+    size_factor <- 15 / tree_metrics$total_nodes
+    base_size <- base_size * size_factor
+  }
+
+  # Minimum readable size
+  min_size <- 2.5
+
+  return(max(base_size, min_size))
+}
+
+
+# Helper function to calculate optimal node size based on tree complexity
+calculate_optimal_node_size <- function(tree_metrics) {
+  # Base node size
+  base_size <- 8
+
+  # Reduce size for complex trees
+  if (tree_metrics$total_nodes > 15) {
+    size_factor <- 15 / tree_metrics$total_nodes
+    base_size <- base_size * size_factor
+  }
+
+  # Minimum readable size
+  min_size <- 5
+
+  return(max(base_size, min_size))
+}
+
+
+# Helper function to calculate node x,y positions using Walker's algorithm
+calculate_node_positions_walker <- function(tree_table, node_depths, node_spacing) {
+  all_nodes <- as.integer(names(node_depths))
+  max_depth <- max(node_depths, na.rm = TRUE)
+
+  # Initialize positions
+  positions <- data.frame(
+    node = all_nodes,
+    x = node_depths * 3,  # Horizontal spacing based on depth
+    y = rep(0, length(all_nodes)),
+    stringsAsFactors = FALSE
+  )
+
+  # Build adjacency list for children
+  children_list <- lapply(all_nodes, function(node) {
+    tree_table$to_node[tree_table$from_node == node]
+  })
+  names(children_list) <- all_nodes
+
+  # Walker's algorithm: bottom-up pass to calculate relative positions
+  # Start from deepest level and work up
+  for (depth in max_depth:0) {
+    nodes_at_depth <- all_nodes[node_depths == depth]
+
+    for (node in nodes_at_depth) {
+      children <- children_list[[as.character(node)]]
+
+      if (length(children) == 0) {
+        # Terminal node - position will be set in final pass
+        next
+      } else if (length(children) == 1) {
+        # Single child - center parent over child
+        child_idx <- which(positions$node == children[1])
+        node_idx <- which(positions$node == node)
+        positions$y[node_idx] <- positions$y[child_idx]
+      } else {
+        # Multiple children - center parent over children
+        child_indices <- which(positions$node %in% children)
+        child_y_positions <- positions$y[child_indices]
+        node_idx <- which(positions$node == node)
+        positions$y[node_idx] <- mean(child_y_positions)
+      }
+    }
+  }
+
+  # Second pass: distribute terminal nodes to avoid overlap
+  for (depth in 0:max_depth) {
+    nodes_at_depth <- all_nodes[node_depths == depth]
+
+    # Separate terminal and non-terminal nodes
+    terminal_at_depth <- nodes_at_depth[sapply(nodes_at_depth, function(n) {
+      length(children_list[[as.character(n)]]) == 0
+    })]
+
+    if (length(terminal_at_depth) > 1) {
+      # Sort by current y position
+      terminal_indices <- which(positions$node %in% terminal_at_depth)
+      terminal_y <- positions$y[terminal_indices]
+      order_idx <- order(terminal_y)
+
+      # Redistribute with proper spacing
+      new_y <- seq(
+        from = -(length(terminal_at_depth) - 1) * node_spacing / 2,
+        to = (length(terminal_at_depth) - 1) * node_spacing / 2,
+        length.out = length(terminal_at_depth)
+      )
+
+      positions$y[terminal_indices[order_idx]] <- new_y
+    } else if (length(terminal_at_depth) == 1) {
+      # Single terminal node - keep it centered if it's the only node at this depth
+      if (length(nodes_at_depth) == 1) {
+        terminal_idx <- which(positions$node == terminal_at_depth)
+        positions$y[terminal_idx] <- 0
+      }
+    }
+  }
+
+  # Third pass: adjust parents to minimize edge crossings and center over children
+  for (depth in (max_depth - 1):0) {
+    nodes_at_depth <- all_nodes[node_depths == depth]
+
+    for (node in nodes_at_depth) {
+      children <- children_list[[as.character(node)]]
+
+      if (length(children) > 0) {
+        child_indices <- which(positions$node %in% children)
+        child_y_positions <- positions$y[child_indices]
+        node_idx <- which(positions$node == node)
+
+        # Center parent over children
+        positions$y[node_idx] <- mean(child_y_positions)
+      }
+    }
+  }
+
+  return(positions)
+}
+
+
+# Helper function to calculate node x,y positions (simple method)
 calculate_node_positions <- function(tree_table, node_depths, node_spacing) {
   all_nodes <- as.integer(names(node_depths))
   max_depth <- max(node_depths, na.rm = TRUE)

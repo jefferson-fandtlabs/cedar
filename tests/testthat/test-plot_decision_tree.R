@@ -604,3 +604,253 @@ test_that("plot_decision_tree handles complete example with all features", {
 
   expect_s3_class(result, "ggplot")
 })
+
+
+# ============================================================================
+# Tests for new layout features (Sprint 1)
+# ============================================================================
+
+test_that("plot_decision_tree auto_spacing parameter works", {
+  tree <- list("1" = c(2, 3), "2" = c(4, 5), "3" = c(6, 7))
+  costs <- list("c1" = 1000, "c2" = 1500, "c3" = 2000, "c4" = 2500)
+  probs <- list("p1" = 0.6, "p2" = 0.4, "p3" = 0.7, "p4" = 0.3)
+  outcomes <- list("qaly1" = 0.8, "qaly2" = 0.6, "qaly3" = 0.9, "qaly4" = 0.7)
+
+  cost_assoc <- data.frame(
+    name = c("c1", "c2", "c3", "c4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2", "p3", "p4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  outcome_assoc <- data.frame(
+    name = c("qaly1", "qaly2", "qaly3", "qaly4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  tree_table <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  # Test with auto_spacing = TRUE (default)
+  plot1 <- plot_decision_tree(tree_table, auto_spacing = TRUE)
+  expect_s3_class(plot1, "ggplot")
+
+  # Test with auto_spacing = FALSE
+  plot2 <- plot_decision_tree(tree_table, auto_spacing = FALSE, node_spacing = 3)
+  expect_s3_class(plot2, "ggplot")
+})
+
+
+test_that("plot_decision_tree auto_sizing parameter works", {
+  tree <- list("1" = c(2, 3), "2" = c(4, 5), "3" = c(6, 7))
+  costs <- list("c1" = 1000, "c2" = 1500, "c3" = 2000, "c4" = 2500)
+  probs <- list("p1" = 0.6, "p2" = 0.4, "p3" = 0.7, "p4" = 0.3)
+  outcomes <- list("qaly1" = 0.8, "qaly2" = 0.6, "qaly3" = 0.9, "qaly4" = 0.7)
+
+  cost_assoc <- data.frame(
+    name = c("c1", "c2", "c3", "c4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2", "p3", "p4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  outcome_assoc <- data.frame(
+    name = c("qaly1", "qaly2", "qaly3", "qaly4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  tree_table <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  # Test with auto_sizing = TRUE (default)
+  plot1 <- plot_decision_tree(tree_table, auto_sizing = TRUE)
+  expect_s3_class(plot1, "ggplot")
+
+  # Test with auto_sizing = FALSE
+  plot2 <- plot_decision_tree(tree_table, auto_sizing = FALSE)
+  expect_s3_class(plot2, "ggplot")
+})
+
+
+test_that("plot_decision_tree layout_algorithm parameter works", {
+  tree <- list("1" = c(2, 3), "2" = c(4, 5), "3" = c(6, 7))
+  costs <- list("c1" = 1000, "c2" = 1500, "c3" = 2000, "c4" = 2500)
+  probs <- list("p1" = 0.6, "p2" = 0.4, "p3" = 0.7, "p4" = 0.3)
+  outcomes <- list("qaly1" = 0.8, "qaly2" = 0.6, "qaly3" = 0.9, "qaly4" = 0.7)
+
+  cost_assoc <- data.frame(
+    name = c("c1", "c2", "c3", "c4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  prob_assoc <- data.frame(
+    name = c("p1", "p2", "p3", "p4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  outcome_assoc <- data.frame(
+    name = c("qaly1", "qaly2", "qaly3", "qaly4"),
+    from_node = c(2, 2, 3, 3),
+    to_node = c(4, 5, 6, 7)
+  )
+
+  tree_table <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  # Test with walker layout (default)
+  plot1 <- plot_decision_tree(tree_table, layout_algorithm = "walker")
+  expect_s3_class(plot1, "ggplot")
+
+  # Test with simple layout
+  plot2 <- plot_decision_tree(tree_table, layout_algorithm = "simple")
+  expect_s3_class(plot2, "ggplot")
+})
+
+
+test_that("plot_decision_tree handles complex trees with new layout", {
+  # Create a complex tree with 21 nodes
+  tree <- list(
+    "1" = c(2, 3, 4),
+    "2" = c(14),
+    "3" = c(5, 15),
+    "4" = c(6, 7),
+    "5" = c(8, 9),
+    "6" = c(18),
+    "7" = c(10, 11),
+    "8" = c(16),
+    "9" = c(17),
+    "10" = c(19),
+    "11" = c(12, 13),
+    "12" = c(20),
+    "13" = c(21)
+  )
+
+  # Minimal setup for testing
+  costs <- list()
+  probs <- list()
+  outcomes <- list()
+
+  cost_assoc <- data.frame(
+    name = character(0),
+    from_node = integer(0),
+    to_node = integer(0)
+  )
+
+  prob_assoc <- data.frame(
+    name = character(0),
+    from_node = integer(0),
+    to_node = integer(0)
+  )
+
+  outcome_assoc <- data.frame(
+    name = character(0),
+    from_node = integer(0),
+    to_node = integer(0)
+  )
+
+  tree_table <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  # Test with default settings (should use walker layout and auto-sizing)
+  plot <- plot_decision_tree(tree_table)
+  expect_s3_class(plot, "ggplot")
+})
+
+
+test_that("plot_decision_tree layout_algorithm rejects invalid values", {
+  tree <- list("1" = c(2, 3))
+  costs <- list()
+  probs <- list()
+  outcomes <- list()
+
+  cost_assoc <- data.frame(
+    name = character(0),
+    from_node = integer(0),
+    to_node = integer(0)
+  )
+
+  prob_assoc <- data.frame(
+    name = character(0),
+    from_node = integer(0),
+    to_node = integer(0)
+  )
+
+  outcome_assoc <- data.frame(
+    name = character(0),
+    from_node = integer(0),
+    to_node = integer(0)
+  )
+
+  tree_table <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  expect_error(
+    plot_decision_tree(tree_table, layout_algorithm = "invalid"),
+    "layout_algorithm must be 'walker' or 'simple'"
+  )
+})
+
+
+test_that("plot_decision_tree auto parameters reject non-logical values", {
+  tree <- list("1" = c(2, 3))
+  costs <- list()
+  probs <- list()
+  outcomes <- list()
+
+  cost_assoc <- data.frame(
+    name = character(0),
+    from_node = integer(0),
+    to_node = integer(0)
+  )
+
+  prob_assoc <- data.frame(
+    name = character(0),
+    from_node = integer(0),
+    to_node = integer(0)
+  )
+
+  outcome_assoc <- data.frame(
+    name = character(0),
+    from_node = integer(0),
+    to_node = integer(0)
+  )
+
+  tree_table <- build_decision_tree_table(
+    tree, costs, probs, outcomes,
+    cost_assoc, prob_assoc, outcome_assoc
+  )
+
+  expect_error(
+    plot_decision_tree(tree_table, auto_spacing = "yes"),
+    "auto_spacing must be TRUE or FALSE"
+  )
+
+  expect_error(
+    plot_decision_tree(tree_table, auto_sizing = 1),
+    "auto_sizing must be TRUE or FALSE"
+  )
+})
