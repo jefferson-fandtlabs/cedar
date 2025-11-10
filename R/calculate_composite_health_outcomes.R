@@ -8,13 +8,13 @@
 #' @param outcome_components A health_outcome_components object created by
 #'   \code{\link{specify_health_outcome_components}}. Defines how to calculate
 #'   each composite health outcome from base outcome values.
-#' @param base_outcomes A named list of base health outcome values. Names must
+#' @param base_outcomes A named list of base health outcome values, or NULL.
+#'   Can be NULL or omitted if all outcomes are "life_years" type. Names must
 #'   match the base_outcome_name values in outcome_components. Values are numeric
 #'   and represent:
 #'   \itemize{
 #'     \item For "utility_to_qaly": Health utility values (typically 0-1)
-#'     \item For "life_years": Life year multipliers (typically 1, but can be
-#'       adjusted for quality or other factors)
+#'     \item For "life_years": Not used - automatically uses 1.0 as base value
 #'     \item For "qaly_direct": Pre-calculated QALY values
 #'   }
 #' @param edge_properties Optional data frame or tibble containing edge-specific
@@ -42,7 +42,7 @@
 #'       \item Calculate component outcome based on outcome_type:
 #'       \itemize{
 #'         \item \strong{utility_to_qaly}: base_outcome * years_duration = QALYs
-#'         \item \strong{life_years}: base_outcome * years_duration = life years
+#'         \item \strong{life_years}: 1.0 * years_duration = life years (auto-value)
 #'         \item \strong{qaly_direct}: base_outcome (duration not used)
 #'       }
 #'       \item Sum all components for the outcome_label
@@ -63,13 +63,16 @@
 #' }
 #'
 #' \emph{life_years:}
-#' Calculates life years by multiplying a base value (typically 1) by duration
-#' in years. The base value can be adjusted for quality factors. For example:
+#' Calculates life years by automatically using a base value of 1.0 multiplied
+#' by duration in years. The base_outcome_name is not needed and will be ignored
+#' if provided. For example:
 #' \itemize{
-#'   \item Base = 1.0 (full life years)
+#'   \item Base = 1.0 (automatic, always)
 #'   \item Duration = 5 years
 #'   \item Life years = 1.0 * 5 = 5 years
 #' }
+#' This simplifies the API - users don't need to provide base_outcomes for
+#' life_years calculations.
 #'
 #' \emph{qaly_direct:}
 #' Uses pre-calculated QALY values directly without duration multiplication.
@@ -135,10 +138,10 @@
 #'   edge_props
 #' )
 #'
-#' # Example 3: Mixed outcome types
+#' # Example 3: Mixed outcome types (life_years simplified!)
+#' # Note: No ly_multiplier needed in base_outcomes - life_years auto-uses 1.0
 #' mixed_base_outcomes <- list(
 #'   utility_treatment = 0.80,
-#'   ly_multiplier = 1.0,
 #'   precalc_qaly = 2.5
 #' )
 #'
@@ -146,7 +149,7 @@
 #'   ~outcome_label, ~base_outcome_name, ~outcome_type, ~duration_unit, ~edge_from, ~edge_to, ~duration_value,
 #'   "total_qaly", "utility_treatment", "utility_to_qaly", "years", 1, 2, 3,
 #'   "total_qaly", "precalc_qaly", "qaly_direct", "years", 2, 3, NA,
-#'   "life_years", "ly_multiplier", "life_years", "years", 1, 2, 10
+#'   "life_years", NA, "life_years", "years", 1, 2, 10
 #' ) |>
 #'   specify_health_outcome_components()
 #'
@@ -157,7 +160,20 @@
 #'
 #' # Results:
 #' # total_qaly = (0.80 * 3) + 2.5 = 4.9 QALYs
-#' # life_years = 1.0 * 10 = 10 years
+#' # life_years = 1.0 * 10 = 10 years (auto-value)
+#'
+#' # Example 4: Pure life years - no base_outcomes needed!
+#' life_years_only <- tribble(
+#'   ~outcome_label, ~outcome_type, ~duration_unit, ~edge_from, ~edge_to, ~duration_value,
+#'   "survival", "life_years", "years", 1, 2, 10,
+#'   "survival", "life_years", "months", 2, 3, 24
+#' ) |>
+#'   specify_health_outcome_components()
+#'
+#' ly_outcomes <- calculate_composite_health_outcomes(life_years_only)
+#'
+#' # Results:
+#' # survival = (1.0 * 10) + (1.0 * 2) = 12 life years
 #'
 #' @seealso
 #' \code{\link{specify_health_outcome_components}} for creating valid component specifications,
@@ -166,7 +182,7 @@
 #'
 #' @export
 calculate_composite_health_outcomes <- function(outcome_components,
-                                                base_outcomes,
+                                                base_outcomes = NULL,
                                                 edge_properties = NULL) {
 
   # Input validation
@@ -177,28 +193,51 @@ calculate_composite_health_outcomes <- function(outcome_components,
     )
   }
 
-  if (!is.list(base_outcomes)) {
-    stop("base_outcomes must be a named list", call. = FALSE)
+  # Validate base_outcomes if provided
+  if (!is.null(base_outcomes)) {
+    if (!is.list(base_outcomes)) {
+      stop("base_outcomes must be a named list", call. = FALSE)
+    }
+
+    if (length(base_outcomes) == 0) {
+      stop("base_outcomes cannot be empty when provided", call. = FALSE)
+    }
+
+    if (is.null(names(base_outcomes)) || any(names(base_outcomes) == "")) {
+      stop("All elements in base_outcomes must be named", call. = FALSE)
+    }
   }
 
-  if (length(base_outcomes) == 0) {
-    stop("base_outcomes cannot be empty", call. = FALSE)
-  }
+  # Check base_outcomes requirements based on outcome types
+  has_base_outcome_col <- "base_outcome_name" %in% names(outcome_components)
 
-  if (is.null(names(base_outcomes)) || any(names(base_outcomes) == "")) {
-    stop("All elements in base_outcomes must be named", call. = FALSE)
-  }
+  if (has_base_outcome_col) {
+    # Get non-life_years rows that have non-NA base_outcome_name
+    non_life_years <- outcome_components[outcome_components$outcome_type != "life_years", ]
 
-  # Check that all referenced base outcomes exist
-  referenced_outcomes <- unique(outcome_components$base_outcome_name)
-  missing_outcomes <- setdiff(referenced_outcomes, names(base_outcomes))
+    if (nrow(non_life_years) > 0) {
+      # Get referenced base outcomes (excluding NA values)
+      referenced <- unique(non_life_years$base_outcome_name)
+      referenced <- referenced[!is.na(referenced)]
 
-  if (length(missing_outcomes) > 0) {
-    stop(
-      "Referenced base outcomes not found in base_outcomes: ",
-      paste(missing_outcomes, collapse = ", "),
-      call. = FALSE
-    )
+      if (length(referenced) > 0 && is.null(base_outcomes)) {
+        stop(
+          "base_outcomes required for non-life_years outcome types",
+          call. = FALSE
+        )
+      }
+
+      if (length(referenced) > 0 && !is.null(base_outcomes)) {
+        missing <- setdiff(referenced, names(base_outcomes))
+        if (length(missing) > 0) {
+          stop(
+            "Referenced base outcomes not found in base_outcomes: ",
+            paste(missing, collapse = ", "),
+            call. = FALSE
+          )
+        }
+      }
+    }
   }
 
   # Check if edge_properties is needed
@@ -252,17 +291,23 @@ calculate_composite_health_outcomes <- function(outcome_components,
       component <- label_components[i, ]
 
       # Get base outcome value
-      base_outcome_value <- base_outcomes[[component$base_outcome_name]]
+      if (component$outcome_type == "life_years") {
+        # Always use 1.0 for life_years
+        base_outcome_value <- 1.0
+      } else {
+        # Get from base_outcomes for other types
+        base_outcome_value <- base_outcomes[[component$base_outcome_name]]
 
-      if (!is.numeric(base_outcome_value) || length(base_outcome_value) != 1) {
-        stop(
-          sprintf(
-            "Base outcome '%s' must be a single numeric value, got: %s",
-            component$base_outcome_name,
-            paste(class(base_outcome_value), collapse = ", ")
-          ),
-          call. = FALSE
-        )
+        if (!is.numeric(base_outcome_value) || length(base_outcome_value) != 1) {
+          stop(
+            sprintf(
+              "Base outcome '%s' must be a single numeric value, got: %s",
+              component$base_outcome_name,
+              paste(class(base_outcome_value), collapse = ", ")
+            ),
+            call. = FALSE
+          )
+        }
       }
 
       # Determine duration value

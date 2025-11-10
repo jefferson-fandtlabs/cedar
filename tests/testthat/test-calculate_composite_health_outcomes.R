@@ -562,3 +562,174 @@ test_that("calculate_composite_health_outcomes handles hours correctly", {
   # Should be approximately 0.95 QALYs
   expect_equal(result$qaly_hours, 0.95, tolerance = 1e-6)
 })
+
+# Tests for life_years auto-value functionality
+
+test_that("life_years works without base_outcome_name column", {
+  outcome_components <- data.frame(
+    outcome_label = "life_years",
+    outcome_type = "life_years",
+    duration_unit = "years",
+    edge_from = 1,
+    edge_to = 2,
+    duration_value = 10
+  ) |>
+    specify_health_outcome_components()
+
+  result <- calculate_composite_health_outcomes(outcome_components, base_outcomes = NULL)
+
+  # 1.0 * 10 years = 10 life years (auto-value)
+  expect_equal(result$life_years, 10)
+})
+
+test_that("life_years works with NULL base_outcomes", {
+  outcome_components <- data.frame(
+    outcome_label = c("ly_total", "ly_total"),
+    outcome_type = c("life_years", "life_years"),
+    duration_unit = c("years", "months"),
+    edge_from = c(1, 2),
+    edge_to = c(2, 3),
+    duration_value = c(5, 24)
+  ) |>
+    specify_health_outcome_components()
+
+  result <- calculate_composite_health_outcomes(outcome_components)
+
+  # 1.0 * 5 years + 1.0 * 2 years = 7 life years
+  expect_equal(result$ly_total, 7)
+})
+
+test_that("life_years ignores provided base_outcome_name value", {
+  outcome_components <- data.frame(
+    outcome_label = "life_years",
+    base_outcome_name = "ignored_value",
+    outcome_type = "life_years",
+    duration_unit = "years",
+    edge_from = 1,
+    edge_to = 2,
+    duration_value = 10
+  ) |>
+    specify_health_outcome_components()
+
+  base_outcomes <- list(ignored_value = 999.0)  # Should not be used
+  result <- calculate_composite_health_outcomes(outcome_components, base_outcomes)
+
+  # Uses 1.0, not 999.0
+  expect_equal(result$life_years, 10)
+})
+
+test_that("NULL base_outcomes fails for utility_to_qaly", {
+  outcome_components <- data.frame(
+    outcome_label = "qaly",
+    base_outcome_name = "util_val",
+    outcome_type = "utility_to_qaly",
+    duration_unit = "years",
+    edge_from = 1,
+    edge_to = 2,
+    duration_value = 5
+  ) |>
+    specify_health_outcome_components()
+
+  expect_error(
+    calculate_composite_health_outcomes(outcome_components, base_outcomes = NULL),
+    "base_outcomes required for non-life_years"
+  )
+})
+
+test_that("NULL base_outcomes fails for qaly_direct", {
+  outcome_components <- data.frame(
+    outcome_label = "qaly",
+    base_outcome_name = "precalc",
+    outcome_type = "qaly_direct",
+    duration_unit = "years",
+    edge_from = 1,
+    edge_to = 2,
+    duration_value = NA
+  ) |>
+    specify_health_outcome_components()
+
+  expect_error(
+    calculate_composite_health_outcomes(outcome_components, base_outcomes = NULL),
+    "base_outcomes required for non-life_years"
+  )
+})
+
+test_that("mixed outcomes work with simplified life_years", {
+  # Only need base_outcomes for non-life_years
+  base_outcomes <- list(
+    utility1 = 0.80,
+    precalc_qaly = 2.5
+  )
+
+  outcome_components <- data.frame(
+    outcome_label = c("total_qaly", "total_qaly", "life_years"),
+    base_outcome_name = c("utility1", "precalc_qaly", NA),
+    outcome_type = c("utility_to_qaly", "qaly_direct", "life_years"),
+    duration_unit = c("years", "years", "years"),
+    edge_from = c(1, 2, 1),
+    edge_to = c(2, 3, 2),
+    duration_value = c(3, 1, 10)  # qaly_direct doesn't use duration, but needs a value
+  ) |>
+    specify_health_outcome_components()
+
+  result <- calculate_composite_health_outcomes(outcome_components, base_outcomes)
+
+  # total_qaly = (0.80 * 3) + 2.5 = 4.9
+  expect_equal(result$total_qaly, 4.9)
+
+  # life_years = 1.0 * 10 = 10
+  expect_equal(result$life_years, 10)
+})
+
+test_that("life_years with different duration units all use 1.0", {
+  outcome_components <- data.frame(
+    outcome_label = rep("survival", 5),
+    outcome_type = rep("life_years", 5),
+    duration_unit = c("hours", "days", "weeks", "months", "years"),
+    edge_from = 1:5,
+    edge_to = 2:6,
+    duration_value = c(8766, 365.25, 52.17857, 12, 1)  # All approximately 1 year
+  ) |>
+    specify_health_outcome_components()
+
+  result <- calculate_composite_health_outcomes(outcome_components)
+
+  # All should sum to approximately 5 life years (5 * 1 year)
+  expect_equal(result$survival, 5, tolerance = 1e-3)
+})
+
+test_that("life_years calculation matches old behavior with ly_multiplier=1.0", {
+  # Old way (still works but ignores the value)
+  old_way <- data.frame(
+    outcome_label = "life_years",
+    base_outcome_name = "ly_mult",
+    outcome_type = "life_years",
+    duration_unit = "years",
+    edge_from = 1,
+    edge_to = 2,
+    duration_value = 7.5
+  ) |>
+    specify_health_outcome_components()
+
+  old_result <- calculate_composite_health_outcomes(
+    old_way,
+    list(ly_mult = 1.0)
+  )
+
+  # New way (simplified)
+  new_way <- data.frame(
+    outcome_label = "life_years",
+    outcome_type = "life_years",
+    duration_unit = "years",
+    edge_from = 1,
+    edge_to = 2,
+    duration_value = 7.5
+  ) |>
+    specify_health_outcome_components()
+
+  new_result <- calculate_composite_health_outcomes(new_way)
+
+  # Both should give same result
+  expect_equal(old_result$life_years, new_result$life_years)
+  expect_equal(new_result$life_years, 7.5)
+})

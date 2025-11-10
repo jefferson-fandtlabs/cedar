@@ -6,7 +6,7 @@
 \usage{
 calculate_composite_health_outcomes(
   outcome_components,
-  base_outcomes,
+  base_outcomes = NULL,
   edge_properties = NULL
 )
 }
@@ -15,13 +15,13 @@ calculate_composite_health_outcomes(
 \code{\link{specify_health_outcome_components}}. Defines how to calculate
 each composite health outcome from base outcome values.}
 
-\item{base_outcomes}{A named list of base health outcome values. Names must
+\item{base_outcomes}{A named list of base health outcome values, or NULL.
+Can be NULL or omitted if all outcomes are "life_years" type. Names must
 match the base_outcome_name values in outcome_components. Values are numeric
 and represent:
 \itemize{
   \item For "utility_to_qaly": Health utility values (typically 0-1)
-  \item For "life_years": Life year multipliers (typically 1, but can be
-    adjusted for quality or other factors)
+  \item For "life_years": Not used - automatically uses 1.0 as base value
   \item For "qaly_direct": Pre-calculated QALY values
 }}
 
@@ -56,7 +56,7 @@ The calculation process:
       \item Calculate component outcome based on outcome_type:
       \itemize{
         \item \strong{utility_to_qaly}: base_outcome * years_duration = QALYs
-        \item \strong{life_years}: base_outcome * years_duration = life years
+        \item \strong{life_years}: 1.0 * years_duration = life years (auto-value)
         \item \strong{qaly_direct}: base_outcome (duration not used)
       }
       \item Sum all components for the outcome_label
@@ -77,13 +77,16 @@ in years. For example:
 }
 
 \emph{life_years:}
-Calculates life years by multiplying a base value (typically 1) by duration
-in years. The base value can be adjusted for quality factors. For example:
+Calculates life years by automatically using a base value of 1.0 multiplied
+by duration in years. The base_outcome_name is not needed and will be ignored
+if provided. For example:
 \itemize{
-  \item Base = 1.0 (full life years)
+  \item Base = 1.0 (automatic, always)
   \item Duration = 5 years
   \item Life years = 1.0 * 5 = 5 years
 }
+This simplifies the API - users don't need to provide base_outcomes for
+life_years calculations.
 
 \emph{qaly_direct:}
 Uses pre-calculated QALY values directly without duration multiplication.
@@ -149,10 +152,10 @@ composite_outcomes_lookup <- calculate_composite_health_outcomes(
   edge_props
 )
 
-# Example 3: Mixed outcome types
+# Example 3: Mixed outcome types (life_years simplified!)
+# Note: No ly_multiplier needed in base_outcomes - life_years auto-uses 1.0
 mixed_base_outcomes <- list(
   utility_treatment = 0.80,
-  ly_multiplier = 1.0,
   precalc_qaly = 2.5
 )
 
@@ -160,7 +163,7 @@ mixed_components <- tribble(
   ~outcome_label, ~base_outcome_name, ~outcome_type, ~duration_unit, ~edge_from, ~edge_to, ~duration_value,
   "total_qaly", "utility_treatment", "utility_to_qaly", "years", 1, 2, 3,
   "total_qaly", "precalc_qaly", "qaly_direct", "years", 2, 3, NA,
-  "life_years", "ly_multiplier", "life_years", "years", 1, 2, 10
+  "life_years", NA, "life_years", "years", 1, 2, 10
 ) |>
   specify_health_outcome_components()
 
@@ -171,7 +174,20 @@ mixed_outcomes <- calculate_composite_health_outcomes(
 
 # Results:
 # total_qaly = (0.80 * 3) + 2.5 = 4.9 QALYs
-# life_years = 1.0 * 10 = 10 years
+# life_years = 1.0 * 10 = 10 years (auto-value)
+
+# Example 4: Pure life years - no base_outcomes needed!
+life_years_only <- tribble(
+  ~outcome_label, ~outcome_type, ~duration_unit, ~edge_from, ~edge_to, ~duration_value,
+  "survival", "life_years", "years", 1, 2, 10,
+  "survival", "life_years", "months", 2, 3, 24
+) |>
+  specify_health_outcome_components()
+
+ly_outcomes <- calculate_composite_health_outcomes(life_years_only)
+
+# Results:
+# survival = (1.0 * 10) + (1.0 * 2) = 12 life years
 
 }
 \seealso{

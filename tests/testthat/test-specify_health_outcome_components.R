@@ -59,7 +59,7 @@ test_that("specify_health_outcome_components errors on missing outcome_label", {
   )
 })
 
-test_that("specify_health_outcome_components errors on missing base_outcome_name", {
+test_that("specify_health_outcome_components errors on missing base_outcome_name for non-life_years", {
   spec <- data.frame(
     outcome_label = "qaly1",
     outcome_type = "utility_to_qaly",
@@ -70,7 +70,7 @@ test_that("specify_health_outcome_components errors on missing base_outcome_name
 
   expect_error(
     specify_health_outcome_components(spec),
-    "Missing required columns.*base_outcome_name"
+    "base_outcome_name column required when using outcome types other than 'life_years'"
   )
 })
 
@@ -349,4 +349,147 @@ test_that("specify_health_outcome_components handles mixed duration units", {
 
   # Check that all duration units are preserved
   expect_setequal(result$duration_unit, c("hours", "days", "weeks", "months", "years"))
+})
+
+# Tests for optional base_outcome_name column (life_years functionality)
+
+test_that("base_outcome_name column is optional for life_years only", {
+  # Should work - all life_years, no base_outcome_name column
+  spec_valid <- data.frame(
+    outcome_label = c("ly_total", "ly_total"),
+    outcome_type = c("life_years", "life_years"),
+    duration_unit = c("years", "months"),
+    edge_from = c(1, 2),
+    edge_to = c(2, 3),
+    duration_value = c(10, 24)
+  )
+
+  result <- specify_health_outcome_components(spec_valid)
+  expect_s3_class(result, "health_outcome_components")
+  expect_equal(nrow(result), 2)
+  expect_false("base_outcome_name" %in% names(result))
+})
+
+test_that("base_outcome_name required for utility_to_qaly when column missing", {
+  # Should fail - utility_to_qaly without base_outcome_name column
+  spec_invalid <- data.frame(
+    outcome_label = "qaly",
+    outcome_type = "utility_to_qaly",
+    duration_unit = "years",
+    edge_from = 1,
+    edge_to = 2,
+    duration_value = 5
+  )
+
+  expect_error(
+    specify_health_outcome_components(spec_invalid),
+    "base_outcome_name column required when using outcome types other than 'life_years'"
+  )
+})
+
+test_that("base_outcome_name required for qaly_direct when column missing", {
+  # Should fail - qaly_direct without base_outcome_name column
+  spec_invalid <- data.frame(
+    outcome_label = "qaly",
+    outcome_type = "qaly_direct",
+    duration_unit = "years",
+    edge_from = 1,
+    edge_to = 2,
+    duration_value = NA
+  )
+
+  expect_error(
+    specify_health_outcome_components(spec_invalid),
+    "base_outcome_name column required when using outcome types other than 'life_years'"
+  )
+})
+
+test_that("base_outcome_name required for mixed types when column missing", {
+  # Should fail - mixed types without base_outcome_name column
+  spec_invalid <- data.frame(
+    outcome_label = c("outcome1", "outcome2"),
+    outcome_type = c("life_years", "utility_to_qaly"),
+    duration_unit = c("years", "years"),
+    edge_from = c(1, 2),
+    edge_to = c(2, 3),
+    duration_value = c(10, 5)
+  )
+
+  expect_error(
+    specify_health_outcome_components(spec_invalid),
+    "base_outcome_name column required when using outcome types other than 'life_years'"
+  )
+})
+
+test_that("base_outcome_name can be NA for life_years when column present", {
+  # Should work - life_years with NA, others with values
+  spec_mixed <- data.frame(
+    outcome_label = c("ly", "qaly"),
+    base_outcome_name = c(NA, "util_val"),
+    outcome_type = c("life_years", "utility_to_qaly"),
+    duration_unit = c("years", "years"),
+    edge_from = c(1, 2),
+    edge_to = c(2, 3),
+    duration_value = c(10, 5)
+  )
+
+  result <- specify_health_outcome_components(spec_mixed)
+  expect_s3_class(result, "health_outcome_components")
+  expect_equal(nrow(result), 2)
+  expect_true(is.na(result$base_outcome_name[1]))
+  expect_equal(result$base_outcome_name[2], "util_val")
+})
+
+test_that("base_outcome_name cannot be NA for utility_to_qaly", {
+  # Should fail - utility_to_qaly with NA base_outcome_name
+  spec_invalid <- data.frame(
+    outcome_label = "qaly",
+    base_outcome_name = NA,
+    outcome_type = "utility_to_qaly",
+    duration_unit = "years",
+    edge_from = 1,
+    edge_to = 2,
+    duration_value = 5
+  )
+
+  expect_error(
+    specify_health_outcome_components(spec_invalid),
+    "base_outcome_name cannot be NA for outcome types 'utility_to_qaly' or 'qaly_direct'"
+  )
+})
+
+test_that("base_outcome_name cannot be NA for qaly_direct", {
+  # Should fail - qaly_direct with NA base_outcome_name
+  spec_invalid <- data.frame(
+    outcome_label = "qaly",
+    base_outcome_name = NA,
+    outcome_type = "qaly_direct",
+    duration_unit = "years",
+    edge_from = 1,
+    edge_to = 2,
+    duration_value = NA
+  )
+
+  expect_error(
+    specify_health_outcome_components(spec_invalid),
+    "base_outcome_name cannot be NA for outcome types 'utility_to_qaly' or 'qaly_direct'"
+  )
+})
+
+test_that("multiple life_years rows can all have NA base_outcome_name", {
+  # Should work - all life_years with NA
+  spec_valid <- data.frame(
+    outcome_label = c("survival", "survival", "survival"),
+    base_outcome_name = c(NA, NA, NA),
+    outcome_type = c("life_years", "life_years", "life_years"),
+    duration_unit = c("years", "months", "days"),
+    edge_from = c(1, 2, 3),
+    edge_to = c(2, 3, 4),
+    duration_value = c(10, 12, 365)
+  )
+
+  result <- specify_health_outcome_components(spec_valid)
+  expect_s3_class(result, "health_outcome_components")
+  expect_equal(nrow(result), 3)
+  expect_true(all(is.na(result$base_outcome_name)))
 })

@@ -77,23 +77,25 @@ cat("  Total QALYs: ", composite_outcomes_ex2$total_qaly, "\n")
 cat("  Calculation: 0.35 + 3.40 = 3.75 QALYs\n\n")
 
 # ==============================================================================
-# Example 3: Mixed Outcome Types
+# Example 3: Mixed Outcome Types (Simplified life_years!)
 # ==============================================================================
 #
 # Scenario: Combining utility-based QALYs, life years, and pre-calculated QALYs
+# Note: life_years now automatically uses 1.0 - no need for ly_multiplier!
 #
-cat("=== Example 3: Mixed Outcome Types ===\n\n")
+cat("=== Example 3: Mixed Outcome Types (Simplified life_years) ===\n\n")
 
+# Only need base_outcomes for non-life_years outcome types
 base_outcomes_ex3 <- list(
   utility_treatment = 0.80,
-  ly_multiplier = 1.0,
   literature_qaly = 2.5  # QALY value from published literature
+  # No ly_multiplier needed anymore!
 )
 
 outcome_components_ex3 <- tribble(
   ~outcome_label, ~base_outcome_name, ~outcome_type, ~duration_unit, ~edge_from, ~edge_to, ~duration_value,
   "total_benefit", "utility_treatment", "utility_to_qaly", "years", 1, 2, 3,
-  "total_benefit", "ly_multiplier", "life_years", "years", 2, 3, 5,
+  "total_benefit", NA, "life_years", "years", 2, 3, 5,  # NA for base_outcome_name
   "total_benefit", "literature_qaly", "qaly_direct", "years", 3, 4, 1
 ) |>
   specify_health_outcome_components()
@@ -105,7 +107,7 @@ composite_outcomes_ex3 <- calculate_composite_health_outcomes(
 
 cat("Mixed outcome type calculation:\n")
 cat("  Utility to QALY: 0.80 × 3 years = 2.40 QALYs\n")
-cat("  Life years: 1.0 × 5 years = 5.00 years\n")
+cat("  Life years: 1.0 × 5 years = 5.00 years (auto-value)\n")
 cat("  Pre-calculated QALY: 2.50 QALYs\n")
 cat("  Total benefit: ", composite_outcomes_ex3$total_benefit, "\n")
 cat("  Calculation: 2.40 + 5.00 + 2.50 = 9.90\n\n")
@@ -309,6 +311,41 @@ cat("  Treatment A: (0.70 × 4.25) + (0.30 × 3.25) = 3.95 QALYs\n")
 cat("  Treatment B: (0.60 × 4.00) + (0.40 × 3.00) = 3.60 QALYs\n\n")
 
 # ==============================================================================
+# Example 7: Pure Life Years - No base_outcomes Needed!
+# ==============================================================================
+#
+# Scenario: Calculating life years without any base_outcomes
+# This demonstrates the simplified API for life_years
+#
+cat("=== Example 7: Pure Life Years (No base_outcomes needed!) ===\n\n")
+
+# No base_outcomes needed at all!
+# Can omit the base_outcome_name column entirely
+outcome_components_ex7 <- tribble(
+  ~outcome_label, ~outcome_type, ~duration_unit, ~edge_from, ~edge_to, ~duration_value,
+  "survival", "life_years", "years", 1, 2, 10,
+  "survival", "life_years", "months", 2, 3, 24,
+  "survival", "life_years", "days", 3, 4, 365
+) |>
+  specify_health_outcome_components()
+
+# No base_outcomes parameter needed!
+composite_outcomes_ex7 <- calculate_composite_health_outcomes(outcome_components_ex7)
+
+cat("Pure life years calculation (all auto-use 1.0):\n")
+cat("  Component 1: 1.0 × 10 years = 10.00 life years\n")
+cat("  Component 2: 1.0 × 2 years (24 months) = 2.00 life years\n")
+cat("  Component 3: 1.0 × 1 year (365 days) = 1.00 life years\n")
+cat("  Total survival: ", composite_outcomes_ex7$survival, " life years\n")
+cat("  Calculation: 10.00 + 2.00 + 1.00 = 13.00 life years\n\n")
+
+cat("Notice:\n")
+cat("  - No base_outcome_name column needed in the specification\n")
+cat("  - No base_outcomes parameter needed in the calculation\n")
+cat("  - All life_years automatically use base value of 1.0\n")
+cat("  - Makes the API much simpler for pure survival analyses!\n\n")
+
+# ==============================================================================
 # Key Concepts Summary
 # ==============================================================================
 #
@@ -317,7 +354,7 @@ cat("=== Key Concepts ===\n\n")
 cat("1. Outcome Types:\n")
 cat("   - utility_to_qaly: Converts health utility (0-1) to QALYs by multiplying\n")
 cat("     by duration in years\n")
-cat("   - life_years: Multiplies base value by duration in years\n")
+cat("   - life_years: Automatically uses 1.0 as base value (no base_outcomes needed)\n")
 cat("   - qaly_direct: Uses pre-calculated QALY value directly (no duration used)\n\n")
 
 cat("2. Duration Units:\n")
